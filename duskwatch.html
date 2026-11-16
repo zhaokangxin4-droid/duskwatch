@@ -1110,7 +1110,12 @@ const ET={
   sniper:{hp:70,r:.45,speed:3.2,score:150,eye:1.7,boxes:[[.78,.4,.78,0],[1.74,.21,.19,1]]},
   leaper:{hp:95,r:.65,speed:7.6,score:110,eye:.5,boxes:[[.5,.7,.5,0]]},
   mortar:{hp:120,r:.45,speed:3,score:140,eye:1.7,boxes:[[.78,.4,.78,0],[1.74,.21,.19,1]]},
-  healer:{hp:60,r:.5,speed:6,score:160,eye:0,boxes:[[0,.52,.32,0]]}
+  healer:{hp:60,r:.5,speed:6,score:160,eye:0,boxes:[[0,.52,.32,0]]},
+  ghost:{hp:55,r:.5,speed:6.9,score:100,eye:.4,boxes:[[.4,.55,.4,0]]},
+  splitter:{hp:85,r:.6,speed:5.2,score:90,eye:.45,boxes:[[.45,.62,.45,0]]},
+  shield:{hp:110,r:.45,speed:3,score:170,eye:1.7,boxes:[[.78,.4,.78,0],[1.74,.21,.19,1]]},
+  frost:{hp:70,r:.5,speed:6,score:140,eye:0,boxes:[[0,.52,.32,0]]},
+  diver:{hp:32,r:.5,speed:10.5,score:90,eye:0,boxes:[[0,.52,.32,0]]}
 };
 const C={crB:[.34,.09,.07],crH:[.2,.07,.06],crL:[.12,.1,.1],red:[1,.12,.06],org:[1,.5,.1],cyan:[.2,.9,1],
   trB:[.2,.24,.31],trH:[.14,.16,.2],trL:[.1,.11,.14],trA:[.75,.42,.1],drB:[.72,.72,.76],drL:[.14,.14,.17],drR:[.6,.6,.6],
@@ -1291,14 +1296,17 @@ function hurtPlayer(d,sx,sz){
 // ───────────────────────── enemies ─────────────────────────
 function spawnEnemy(type,x,z,boss){
   const T=ET[type],hpM=(1+WV.n*.05)*DF[G.diff].hp;
-  const e={type,x,z,y:type==='drone'||type==='healer'?rnd(6,8):0,vx:0,vz:0,yaw:Math.atan2(-x,-z),hp:T.hp*hpM*(boss?4:1),
-    scale:boss?1.6:type==='leaper'?rnd(1.3,1.45):rnd(.94,1.06),boss:!!boss,spawn:0,flash:0,anim:Math.random()*10,cd:rnd(1,2.4),los:false,losT:Math.random()*.3,
+  const e={type,x,z,y:type==='drone'||type==='healer'||type==='frost'||type==='diver'?rnd(6,8):0,vx:0,vz:0,yaw:Math.atan2(-x,-z),hp:T.hp*hpM*(boss?4:1),
+    scale:boss?1.6:type==='leaper'?rnd(1.3,1.45):type==='splitter'?1.25:rnd(.94,1.06),boss:!!boss,spawn:0,flash:0,anim:Math.random()*10,cd:rnd(1,2.4),los:false,losT:Math.random()*.3,
     st:Math.random()<.5?1:-1,stT:rnd(1.5,3),orb:Math.random()*TAU,burst:0,bT:0,wind:0,lunge:0,charge:0,moving:0,dead:false,seed:Math.random()*100,orbT:rnd(3,6),aim:0,lx:x,ly:1,lz:z,prime:0,roll:0,slamT:rnd(4,6),ph2:false,hp0:1};
-  e.hp0=e.hp;
+  e.hp0=e.hp;if(type==='shield')e.shHp=170;
   enemies.push(e);spark(x,1.2,z,10,C.red,5,6,.08,0);SFX.spawn(x,1,z);return e;
 }
 function hurtEnemy(e,dmg,crit,x,y,z,silent){
-  if(e.dead)return;e.hp-=dmg;e.flash=1;dmgNum(e,dmg,crit,x,y,z);
+  if(e.dead||e.born>G.t)return;
+  if(e.shHp>0&&e.charge<=0&&(P.x-e.x)*Math.sin(e.yaw)+(P.z-e.z)*Math.cos(e.yaw)>0){
+    e.shHp-=dmg;dmg*=.1;crit=false;spark(x,y,z,4,C.cyan,5,8,.04);if(e.shHp<=0){SFX.shbreak();spark(e.x,e.y+1.2,e.z,18,C.cyan,8,9,.06);feed('<b style="color:#5ff">护盾击破</b>');}else SFX.shhit();}
+  e.hp-=dmg;e.flash=1;dmgNum(e,dmg,crit,x,y,z);
   spark(x,y,z,crit?9:5,crit?[1,.9,.4]:C.org,6,8,.05);
   if(e.hp<=0){killEnemy(e,crit);hitMark('kill');}
   else{hitMark(crit?'crit':'');if(!silent){if(crit)SFX.crit();else SFX.hit();}}
@@ -1306,6 +1314,7 @@ function hurtEnemy(e,dmg,crit,x,y,z,silent){
 function killEnemy(e,crit){
   if(e.dead)return;e.dead=true;const T=ET[e.type],cy=e.y+(e.type==='drone'?0:T.eye*.6*e.scale);
   G.kills++;G.combo++;G.comboT=4;
+  if(e.type==='splitter')for(let i=0;i<3;i++){const c=spawnEnemy('crawler',clamp(e.x+rnd(-1.2,1.2),-44,44),clamp(e.z+rnd(-1.2,1.2),-44,44));c.scale=.6;c.hp=c.hp0=18;c.spawn=.7;c.born=G.t+.3;}
   P.ult=Math.min(100,P.ult+(crit?11:8)*P.ultM*(e.boss?4:1)*(G.mode===3?2.5:1));if(P.leech)P.hp=Math.min(100,P.hp+P.leech);
   if(e.type==='bomber')boomQ.push({x:e.x,y:.5,z:e.z,r:4.2,d:90,t:.05});
   else if(P.boomCh&&Math.random()<P.boomCh)boomQ.push({x:e.x,y:cy,z:e.z,r:3.2,d:70,t:.06});
@@ -1335,7 +1344,8 @@ function updEnemies(dt){
   G.flowT-=dt;if(G.flowT<=0){G.flowT=.25;flowField();}
   const dmgM=(1+WV.n*.035)*DF[G.diff].dmg,alive=G.state==='play';
   for(const e of enemies){
-    const T=ET[e.type],s=e.scale;
+    const rt=e.type,ab=AIB[rt];if(ab)e.type=ab;
+    const T=ET[rt],s=e.scale;
     e.spawn=Math.min(1,e.spawn+dt*2.2);e.flash=Math.max(0,e.flash-dt*7);
     if(e.hp<T.hp*.45&&Math.random()<dt*7)smoke(e.x+rnd(-.2,.2),e.y+T.eye*s*.8+.2,e.z+rnd(-.2,.2),.25,[.12,.11,.11],1.2,1.4,.7);e.lunge=Math.max(0,e.lunge-dt*4);
     const dx=P.x-e.x,dz=P.z-e.z,d=Math.hypot(dx,dz)||.001,ux=dx/d,uz=dz/d;
@@ -1408,13 +1418,16 @@ function updEnemies(dt){
       if(WV.n>=6||e.boss){e.orbT-=dt;if(e.orbT<=0&&e.los&&d>7&&alive){e.orbT=e.boss?2.6:rnd(4,6);
         const sp=15,tt=d/sp;shots.push({k:2,x:e.x,y:e.y+2.5*s,z:e.z,vx:ux*sp,vy:(P.y+.5-(e.y+2.5*s))/tt+4.5*tt,vz:uz*sp,life:6,dmg:22*dmgM});SFX.bolt(e.x,2.5,e.z);}}
     }
+    if(rt==='frost'){if(alive&&d<9){P.slowT=.25;G.shFx=Math.max(G.shFx,.25);}}
+    else if(rt==='diver'&&e.spawn>=1){wx=ux;wz=uz;e.burst=0;e.cd=9;e.charge=1;e.y+=(P.y+1.1-e.y)*Math.min(1,dt*3.5);
+      if(alive&&d<1.9&&Math.abs(e.y-P.y-1)<1.8){boomQ.push({x:e.x,y:e.y,z:e.z,r:3.6,d:60,t:0});killEnemy(e,false);}}
     const wl=Math.hypot(wx,wz);if(wl>1){wx/=wl;wz/=wl;}
     const ac=1-Math.exp(-dt*(e.type==='drone'?2.5:7));
     e.vx+=(wx*spd-e.vx)*ac;e.vz+=(wz*spd-e.vz)*ac;
     e.x+=e.vx*dt;e.z+=e.vz*dt;
     const sp2=Math.hypot(e.vx,e.vz);e.moving=clamp(sp2/2,0,1);e.anim+=dt*(4+sp2*(e.type==='crawler'?2.2:1.6));
     if(e.type==='drone')pushOut(e,T.r,e.y-.4,e.y+.4);else pushOut(e,T.r*.8*s,.3,T.eye*s);
-    e.yaw=angLerp(e.yaw,face,Math.min(1,dt*(e.type==='brute'?4:9)));
+    e.yaw=angLerp(e.yaw,face,Math.min(1,dt*(e.type==='brute'?4:9)));e.type=rt;
   }
   // separation
   for(let i=0;i<enemies.length;i++){const a=enemies[i],ra=ET[a.type].r*a.scale;
@@ -1466,7 +1479,7 @@ function updWave(dt){
       if(G.mode===2){q.push('boss');if(n>3)q.push('boss');budget=2+n*2;}
       else if(n%5===0){q.push('boss');budget-=8;}
       while(budget>0){const r=Math.random();let t='crawler';
-        if(n>=2&&r<.36)t='trooper';if(n>=3&&r<.17)t='drone';if(n>=3&&r>.80&&r<.90)t='bomber';if(n>=4&&r>.72&&r<.80)t='sniper';if(n>=2&&r>.60&&r<.66)t='leaper';if(n>=4&&r>.66&&r<.72)t='mortar';if(n>=5&&r>.55&&r<.60)t='healer';if(n>=4&&r>.94&&budget>=6)t='brute';
+        if(n>=2&&r<.36)t='trooper';if(n>=3&&r<.17)t='drone';if(n>=3&&r>.80&&r<.90)t='bomber';if(n>=4&&r>.72&&r<.80)t='sniper';if(n>=2&&r>.60&&r<.66)t='leaper';if(n>=4&&r>.66&&r<.72)t='mortar';if(n>=5&&r>.55&&r<.60)t='healer';if(n>=3&&r>.50&&r<.55)t='ghost';if(n>=3&&r>.45&&r<.50)t='splitter';if(n>=5&&r>.40&&r<.45)t='shield';if(n>=6&&r>.36&&r<.40)t='frost';if(n>=4&&r>.17&&r<.23)t='diver';if(n>=4&&r>.94&&budget>=6)t='brute';
         q.push(t);budget-=t==='crawler'?1:t==='brute'?7:t==='sniper'?3:2;}
       for(let i=q.length-1;i>0;i--){const j=(Math.random()*(i+1))|0,t=q[i];q[i]=q[j];q[j]=t;}
       WV.queue=q;WV.state='fight';spawnBarrels();WV.spT=1;announce('第 '+n+' 波',(G.mode===2||n%5===0)?'警告 · 重型单位接近':'WAVE '+n);SFX.wave();hudDirty();
@@ -1487,12 +1500,13 @@ function updWave(dt){
   }
 }
 function updPlayer(dt){
+  P.slowT=(P.slowT||0)-dt;
   if(G.lock)lockAim(dt);
   const sy=Math.sin(P.yaw),cy=Math.cos(P.yaw);
   const mx=(K.KeyD?1:0)-(K.KeyA?1:0)+TC.jx,mz=(K.KeyW?1:0)-(K.KeyS?1:0)-TC.jy;
   let wx=sy*mz-cy*mx,wz=cy*mz+sy*mx;const wl=Math.hypot(wx,wz);if(wl>1){wx/=wl;wz/=wl;}
   P.ads+=((M.r&&P.reload<=0?1:0)-P.ads)*Math.min(1,dt*14);
-  const sprint=(K.ShiftLeft||K.ShiftRight||TC.run)&&mz>0&&P.ads<.5,sp=(sprint?9.4:6.3*(1-P.ads*.4))*P.spdM;
+  const sprint=(K.ShiftLeft||K.ShiftRight||TC.run)&&mz>0&&P.ads<.5,sp=(sprint?9.4:6.3*(1-P.ads*.4))*P.spdM*(P.slowT>0?.6:1);
   const ac=1-Math.exp(-dt*(P.ground?13:2.5));
   if(P.dashT>0){P.dashT-=dt;P.vx=P.dx*27;P.vz=P.dz*27;}else{P.vx+=(wx*sp-P.vx)*ac;P.vz+=(wz*sp-P.vz)*ac;}
   if((K.Space||P.jumpQ)&&P.ground){P.vy=6.7;P.ground=false;SFX.jump();}
@@ -2416,12 +2430,23 @@ syncModes();
 
 // enemy variants: drawn as their base model with swapped colours plus a few extra parts
 Object.assign(C,{lpB:[.3,.1,.4],lpH:[.16,.07,.22],lpA:[.6,.2,.8],moB:[.2,.3,.16],moA:[.5,.6,.2],hlB:[.82,.9,.84]});
-const VAR={leaper:{base:'crawler',c:[['crB','lpB'],['crH','lpH'],['crA','lpA'],['org','mag']]},
+const AIB={ghost:'crawler',splitter:'crawler',shield:'trooper',frost:'drone',diver:'drone'};
+Object.assign(C,{ghB:[.05,.05,.07],spB:[.2,.42,.12],spA:[.5,.8,.2],shB:[.14,.22,.4],shA:[.3,.6,.9],frB:[.6,.8,.95],dvB:[.5,.12,.08],ice:[.5,.85,1]});
+const VAR={ghost:{base:'crawler',c:[['crB','ghB'],['crH','ghB'],['crA','ghB'],['crL','ghB'],['org','mag'],['red','mag']]},
+  splitter:{base:'crawler',c:[['crB','spB'],['crH','spB'],['crA','spA'],['org','grn'],['red','grn']]},
+  shield:{base:'trooper',c:[['trB','shB'],['trA','shA']]},frost:{base:'drone',c:[['drB','frB'],['cyan','ice'],['red','ice']]},
+  diver:{base:'drone',c:[['drB','dvB'],['cyan','org']]},leaper:{base:'crawler',c:[['crB','lpB'],['crH','lpH'],['crA','lpA'],['org','mag']]},
   mortar:{base:'trooper',c:[['trB','moB'],['trA','moA']]},healer:{base:'drone',c:[['drB','hlB'],['cyan','grn'],['red','grn']]}};
 function drawEnemy(e){
   const v=VAR[e.type];if(!v){drawEnemy0(e);return;}
+  if(e.type==='ghost'&&e.flash<=0&&e.spawn>=1&&Math.hypot(e.x-P.x,e.z-P.z)>7.5){FL=0;m4trs(BASE,e.x,e.y,e.z,0,e.yaw,0,e.scale,e.scale,e.scale);
+    for(const sd of[-1,1])sp(sd*.1,.5,.58,.05,.05,.04,C.mag,1.6,0);return;}
   const t=e.type,sv=v.c.map(k=>C[k[0]]);v.c.forEach(k=>{C[k[0]]=C[k[1]];});e.type=v.base;drawEnemy0(e);e.type=t;v.c.forEach((k,i)=>{C[k[0]]=sv[i];});
-  if(t==='mortar'){cy(-.2,1.75,-.22,.55,0,0,.17,.75,C.gun2,0,8);cy(-.2,2.06,-.03,.55,0,0,.19,.05,C.moA,0,6);sp(-.2,2.02,-.05,.1,.1,.1,C.org,2+e.charge*8,0);}
+  if(t==='shield'){if(e.shHp>0)bx(0,1.15,.62,0,0,0,1,1.5,.05,C.shA,(e.charge>0?.2:1.6)+e.flash*5,0,.03);bx(-.3,1.2,.5,0,0,0,.1,.1,.2,C.gun2,0,8,.02);}
+  else if(t==='frost'){cy(0,-.08,0,0,0,0,.95,.03,C.ice,3,0);sp(0,-.26,0,.2,.2,.2,C.ice,5,0);}
+  else if(t==='diver'){for(const sd of[-1,1])bx(sd*.2,-.16,.1,.3,0,0,.1,.1,.34,C.yel,1.5,5,.02);sp(0,-.05,.34,.16,.16,.1,C.org,6+Math.sin(G.t*30)*4,0);}
+  else if(t==='splitter'){for(let i=0;i<3;i++)sp((i-1)*.2,.66,-.5+i*.05,.24,.24,.24,C.spA,1.2,0);}
+  else if(t==='mortar'){cy(-.2,1.75,-.22,.55,0,0,.17,.75,C.gun2,0,8);cy(-.2,2.06,-.03,.55,0,0,.19,.05,C.moA,0,6);sp(-.2,2.02,-.05,.1,.1,.1,C.org,2+e.charge*8,0);}
   else if(t==='healer'){bx(0,.2,0,0,0,0,.26,.07,.08,C.grn,5,0,.01);bx(0,.2,0,0,0,0,.08,.07,.26,C.grn,5,0,.01);sp(0,-.22,0,.16,.16,.16,C.grn,3+e.charge*6,0);}
   else{for(const sd of[-1,1])bx(sd*.2,.62,-.2,.5,0,sd*.3,.05,.3,.05,C.mag,3,0,.01);}
 }
