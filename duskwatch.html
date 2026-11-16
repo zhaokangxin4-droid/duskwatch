@@ -207,6 +207,7 @@ body.touch #slots{justify-content:center}
   <div class="modes">
     <div class="mrow" id="mMode"><span>模式</span><b data-m="0">无尽生存</b><b data-m="1">限时三分钟</b><b data-m="2">首领连战</b><b data-m="3">无限火力</b></div>
     <div class="mrow" id="mDiff"><span>难度</span><b data-d="0">菜鸟</b><b data-d="1">标准</b><b data-d="2">噩梦</b><label id="lockL"><input type="checkbox" id="lockC"> 自动锁头</label></div>
+    <div class="mrow" id="mMap"><span>地图</span></div>
     <div class="mrow" id="mLoad"><span>武器</span></div>
     <div id="mLoadN"></div>
     <div id="mDesc"></div>
@@ -292,10 +293,19 @@ function m4look(o,ex,ey,ez,fx,fy,fz,ux,uy,uz){
 }
 
 // ───────────────────────── settings ─────────────────────────
-const SET={q:3,sens:1,vol:.7,fov:85,mode:0,diff:1,lock:1,load:[0,1,2,3]};
+const SET={q:3,sens:1,vol:.7,fov:85,mode:0,diff:1,lock:1,load:[0,1,2,3],map:0};
+const MAPS=[
+  {n:'天台哨站',d:'黄昏的城市天台，掩体均衡',seed:7741,ground:[.21,.21,.235],tint:[1,1,1],day:1,wet:0,
+   plan:['pillar','lamp','lamp','cont','cont','cont','cont','cont','vent','vent','bar','bar','sand','sand','crate','crate','crate','crate','drum','drum','drum','xbar','xbar','xbar']},
+  {n:'集装箱码头',d:'货柜堆成迷宫，视线短，油桶多',seed:20261,ground:[.15,.17,.19],tint:[.9,1,1.1],day:.8,wet:0,
+   plan:['lamp','lamp','lamp','cont','cont','cont','cont','cont','cont','cont','cont','cont','cont','cont','crate','crate','crate','drum','drum','drum','drum','xbar','xbar','xbar','xbar','xbar']},
+  {n:'雨夜工厂',d:'暴雨中的厂区，开阔地多，一开场就是雨夜',seed:977,ground:[.24,.2,.17],tint:[1.06,1,.9],day:.2,wet:1,
+   plan:['pillar','pillar','pillar','lamp','lamp','vent','vent','vent','vent','bar','bar','bar','bar','sand','sand','sand','crate','crate','drum','xbar','xbar']}
+];
+let CURMAP=0;
 try{Object.assign(SET,JSON.parse(localStorage.getItem('duskwatch.set2')||'{}'));}catch(e){}
 const saveSet=()=>{try{localStorage.setItem('duskwatch.set2',JSON.stringify(SET));}catch(e){}};
-let BEST=0;const bestKey=()=>'duskwatch.best'+(SET.mode||SET.diff!==1?'.'+SET.mode+SET.diff:'');
+let BEST=0;const bestKey=()=>'duskwatch.best'+(SET.mode||SET.diff!==1||SET.map?'.'+SET.mode+SET.diff+(SET.map||''):'');
 function loadBest(){try{BEST=+localStorage.getItem(bestKey())||0;}catch(e){BEST=0;}}
 SET.mode=Math.min(3,Math.max(0,SET.mode|0));SET.diff=SET.diff===0?0:SET.diff===2?2:1;loadBest();
 const DF=[{hp:.75,dmg:.5,bud:.8},{hp:1,dmg:1,bud:1},{hp:1.35,dmg:1.5,bud:1.3}];
@@ -606,7 +616,7 @@ void main(){vec3 c=texture(uT,vUV).rgb*.227027;
   c+=(texture(uT,vUV+uD*1.3846).rgb+texture(uT,vUV-uD*1.3846).rgb)*.316216;
   c+=(texture(uT,vUV+uD*3.2308).rgb+texture(uT,vUV-uD*3.2308).rgb)*.070270;o=vec4(c,1.);}`;
 const FS_COMP=`#version 300 es
-precision highp float;in vec2 vUV;uniform sampler2D uT,uB1,uB2,uB3,uAO,uGR;uniform float uDmg,uHp,uHeal,uBT,uShd,uExp;out vec4 o;
+precision highp float;in vec2 vUV;uniform sampler2D uT,uB1,uB2,uB3,uAO,uGR;uniform float uDmg,uHp,uHeal,uBT,uShd,uExp;uniform vec3 uTint;out vec4 o;
 void main(){
   vec2 cc=vUV-.5;float r2=dot(cc,cc);
   vec2 off=cc*r2*.012*(1.+uDmg*4.+uBT*5.);
@@ -619,7 +629,7 @@ void main(){
   c=pow(clamp(c,0.,1.),vec3(1./2.2));
   float l=dot(c,vec3(.299,.587,.114));
   c*=mix(vec3(.93,1.,1.09),vec3(1.06,1.,.93),smoothstep(0.,.9,l));
-  c=mix(vec3(.5),c,1.07);
+  c=mix(vec3(.5),c,1.07)*uTint;
   c=mix(vec3(l),c,mix(.3,1.08,uHp));
   c=mix(c,vec3(.75,.04,.02),clamp(uDmg*r2*2.6,0.,.85));
   c+=vec3(.1,.5,.25)*uHeal*r2*2.;
@@ -758,11 +768,13 @@ function solid(x,z,sx,sy,sz,y0){y0=y0||0;const c={x0:x-sx/2,x1:x+sx/2,y0,y1:y0+s
 const SB=(x,y,z,sx,sy,sz,c,e,mat,ry,sd,bv)=>stat.m[0].put(x,y,z,0,ry||0,0,sx,sy,sz,c,e||0,mat||0,sd||0,bv===undefined?.03:bv);
 const SC=(x,y,z,d,h,c,e,mat,rx,rz,sd)=>stat.m[1].put(x,y,z,rx||0,0,rz||0,d,h,d,c,e||0,mat||0,sd||0,0);
 const SS=(x,y,z,sx,sy,sz,c,e,mat)=>stat.m[2].put(x,y,z,0,0,0,sx,sy,sz,c,e||0,mat||0,0,0);
+function setMap(i){i=i===1||i===2?i:0;if(i===CURMAP)return;CURMAP=i;buildWorld();}
 function buildWorld(){
-  const R=rng(7741);
+  const MP=MAPS[CURMAP],R=rng(MP.seed);
+  stat.reset();ground.reset();COL.length=LIGHTS.length=GATES.length=VENTS.length=GLARE.length=0;barrels.length=0;for(const l of CG)l.length=0;
   const pal=[[.08,.36,.40],[.55,.19,.09],[.11,.17,.36],[.60,.44,.10],[.48,.48,.50],[.36,.09,.13]];
   const dk=[.1,.1,.12],stl=[.3,.31,.34],rustc=[.36,.22,.14];
-  ground.m[0].put(0,-1,0,0,0,0,130,2,130,[.21,.21,.235],0,1,0,0);ground.upload();
+  ground.m[0].put(0,-1,0,0,0,0,130,2,130,MP.ground,0,1,0,0);ground.upload();
   // perimeter towers
   const bc=[[.17,.18,.24],[.21,.19,.21],[.14,.16,.20],[.23,.21,.25]];
   const neon=[[1,.15,.6],[.1,.8,1],[1,.55,.1],[.25,1,.5]];
@@ -828,7 +840,7 @@ function buildWorld(){
     for(const f of foot)if(Math.abs(x-f.x)<hx+f.hx+pad&&Math.abs(z-f.z)<hz+f.hz+pad)return false;
     return true;
   }
-  const plan=['pillar','lamp','lamp','cont','cont','cont','cont','cont','vent','vent','bar','bar','sand','sand','crate','crate','crate','crate','drum','drum','drum','xbar','xbar','xbar'],items=[];
+  const plan=MP.plan,items=[];
   for(const t of plan){
     const o=R()<.5;let hx,hz;
     if(t==='cont'){hx=o?3:1.22;hz=o?1.22:3;}else if(t==='bar'||t==='sand'){hx=o?2.25:.36;hz=o?.36:2.25;}
@@ -1095,7 +1107,10 @@ const ET={
   drone:{hp:55,r:.5,speed:7,score:120,eye:0,boxes:[[0,.52,.32,0]]},
   brute:{hp:520,r:.95,speed:3.0,score:400,eye:2.2,boxes:[[1.15,.85,1.15,0],[2.46,.3,.22,1]]},
   bomber:{hp:34,r:.45,speed:8.4,score:80,eye:.5,boxes:[[.46,.47,.47,0]]},
-  sniper:{hp:70,r:.45,speed:3.2,score:150,eye:1.7,boxes:[[.78,.4,.78,0],[1.74,.21,.19,1]]}
+  sniper:{hp:70,r:.45,speed:3.2,score:150,eye:1.7,boxes:[[.78,.4,.78,0],[1.74,.21,.19,1]]},
+  leaper:{hp:95,r:.65,speed:7.6,score:110,eye:.5,boxes:[[.5,.7,.5,0]]},
+  mortar:{hp:120,r:.45,speed:3,score:140,eye:1.7,boxes:[[.78,.4,.78,0],[1.74,.21,.19,1]]},
+  healer:{hp:60,r:.5,speed:6,score:160,eye:0,boxes:[[0,.52,.32,0]]}
 };
 const C={crB:[.34,.09,.07],crH:[.2,.07,.06],crL:[.12,.1,.1],red:[1,.12,.06],org:[1,.5,.1],cyan:[.2,.9,1],
   trB:[.2,.24,.31],trH:[.14,.16,.2],trL:[.1,.11,.14],trA:[.75,.42,.1],drB:[.72,.72,.76],drL:[.14,.14,.17],drR:[.6,.6,.6],
@@ -1276,8 +1291,8 @@ function hurtPlayer(d,sx,sz){
 // ───────────────────────── enemies ─────────────────────────
 function spawnEnemy(type,x,z,boss){
   const T=ET[type],hpM=(1+WV.n*.05)*DF[G.diff].hp;
-  const e={type,x,z,y:type==='drone'?rnd(6,8):0,vx:0,vz:0,yaw:Math.atan2(-x,-z),hp:T.hp*hpM*(boss?4:1),
-    scale:boss?1.6:rnd(.94,1.06),boss:!!boss,spawn:0,flash:0,anim:Math.random()*10,cd:rnd(1,2.4),los:false,losT:Math.random()*.3,
+  const e={type,x,z,y:type==='drone'||type==='healer'?rnd(6,8):0,vx:0,vz:0,yaw:Math.atan2(-x,-z),hp:T.hp*hpM*(boss?4:1),
+    scale:boss?1.6:type==='leaper'?rnd(1.3,1.45):rnd(.94,1.06),boss:!!boss,spawn:0,flash:0,anim:Math.random()*10,cd:rnd(1,2.4),los:false,losT:Math.random()*.3,
     st:Math.random()<.5?1:-1,stT:rnd(1.5,3),orb:Math.random()*TAU,burst:0,bT:0,wind:0,lunge:0,charge:0,moving:0,dead:false,seed:Math.random()*100,orbT:rnd(3,6),aim:0,lx:x,ly:1,lz:z,prime:0,roll:0,slamT:rnd(4,6),ph2:false,hp0:1};
   e.hp0=e.hp;
   enemies.push(e);spark(x,1.2,z,10,C.red,5,6,.08,0);SFX.spawn(x,1,z);return e;
@@ -1327,14 +1342,15 @@ function updEnemies(dt){
     e.losT-=dt;if(e.losT<=0){e.losT=rnd(.18,.32);e.los=los(e.x,e.y+T.eye*s+.1,e.z,P.x,P.y+1.3,P.z);}
     let wx=0,wz=0,spd=T.speed*(1+WV.n*.012),face=Math.atan2(dx,dz);
     if(e.spawn<1){spd*=.3;}
-    if(e.type==='crawler'){
+    if(e.type==='crawler'||e.type==='leaper'){
+      if(e.type==='leaper'&&e.los&&d<10&&d>3.5&&e.cd<=0&&alive){e.cd=1.5;e.vx=ux*24;e.vz=uz*24;e.lunge=1;SFX.growl(e.x,.5,e.z);}
       if(e.los&&d<8){wx=ux;wz=uz;}else{flowDir(e.x,e.z);wx=FD.x;wz=FD.z;}
       const wv=Math.sin(G.t*3+e.seed)*.4;const px=-wz,pz=wx;wx+=px*wv;wz+=pz*wv;
       if(d>2.2)face=Math.atan2(wx,wz);
       e.cd-=dt;
-      if(alive&&d<1.55&&Math.abs(P.y-e.y)<3&&e.cd<=0){e.cd=.75;e.lunge=1;hurtPlayer(8*dmgM,e.x,e.z);}
+      if(alive&&d<1.55&&Math.abs(P.y-e.y)<3&&e.cd<=0){e.cd=.75;e.lunge=1;hurtPlayer((e.type==='leaper'?16:8)*dmgM,e.x,e.z);}
       if(d<1.1){wx=-ux*.3;wz=-uz*.3;}
-    }else if(e.type==='trooper'){
+    }else if(e.type==='trooper'||e.type==='mortar'){
       e.stT-=dt;if(e.stT<=0){e.stT=rnd(1.5,3.2);e.st=-e.st;}
       if(!e.los||d>24){flowDir(e.x,e.z);wx=FD.x;wz=FD.z;face=Math.atan2(wx,wz);}
       else if(d<8){wx=-ux+(-uz)*e.st*.6;wz=-uz+ux*e.st*.6;spd*=.8;}
@@ -1343,8 +1359,9 @@ function updEnemies(dt){
       e.charge=e.cd<.5?1-Math.max(e.cd,0)/.5:0;
       if(e.cd<=0){e.cd=Math.max(.9,rnd(1.7,2.5)-WV.n*.04);
         const fx=Math.sin(e.yaw),fz=Math.cos(e.yaw);
-        fireBolt(e.x+(fx*1.03+fz*.05)*s,e.y+1.3*s,e.z+(fz*1.03-fx*.05)*s,25,10*dmgM,C.red,.55);}
-    }else if(e.type==='drone'){
+        if(e.type==='mortar'){const sp=16,tt=d/sp;e.cd+=1.3;shots.push({k:2,x:e.x,y:e.y+2.1*s,z:e.z,vx:ux*sp+P.vx*.4,vy:(P.y+.4-(e.y+2.1*s))/tt+4.5*tt,vz:uz*sp+P.vz*.4,life:6,dmg:18*dmgM});SFX.bolt(e.x,2,e.z);}
+        else fireBolt(e.x+(fx*1.03+fz*.05)*s,e.y+1.3*s,e.z+(fz*1.03-fx*.05)*s,25,10*dmgM,C.red,.55);}
+    }else if(e.type==='drone'||e.type==='healer'){
       e.orb+=dt*.45*e.st;
       const tx=P.x+Math.cos(e.orb)*11,tz=P.z+Math.sin(e.orb)*11,ox=tx-e.x,oz=tz-e.z,ol=Math.hypot(ox,oz)||1;
       const k=Math.min(1,ol/3);wx=ox/ol*k;wz=oz/ol*k;
@@ -1352,7 +1369,7 @@ function updEnemies(dt){
       if(e.los&&alive&&d<30)e.cd-=dt;
       e.charge=(e.cd<.4||e.burst>0)?1:0;
       if(e.cd<=0&&e.burst===0){e.burst=3;e.bT=0;e.cd=rnd(2.6,3.6);}
-      if(e.burst>0){e.bT-=dt;if(e.bT<=0){e.bT=.16;e.burst--;fireBolt(e.x,e.y-.25,e.z,21,7*dmgM,C.mag,.4);}}
+      if(e.burst>0){e.bT-=dt;if(e.bT<=0){e.bT=.16;e.burst--;if(e.type==='healer')healPulse(e);else fireBolt(e.x,e.y-.25,e.z,21,7*dmgM,C.mag,.4);}}
     }else if(e.type==='bomber'){
       if(e.los&&d<10){wx=ux;wz=uz;}else{flowDir(e.x,e.z);wx=FD.x;wz=FD.z;}
       face=Math.atan2(wx,wz);e.roll+=Math.hypot(e.vx,e.vz)*dt*2.2;
@@ -1449,7 +1466,7 @@ function updWave(dt){
       if(G.mode===2){q.push('boss');if(n>3)q.push('boss');budget=2+n*2;}
       else if(n%5===0){q.push('boss');budget-=8;}
       while(budget>0){const r=Math.random();let t='crawler';
-        if(n>=2&&r<.36)t='trooper';if(n>=3&&r<.17)t='drone';if(n>=3&&r>.80&&r<.90)t='bomber';if(n>=4&&r>.72&&r<.80)t='sniper';if(n>=4&&r>.94&&budget>=6)t='brute';
+        if(n>=2&&r<.36)t='trooper';if(n>=3&&r<.17)t='drone';if(n>=3&&r>.80&&r<.90)t='bomber';if(n>=4&&r>.72&&r<.80)t='sniper';if(n>=2&&r>.60&&r<.66)t='leaper';if(n>=4&&r>.66&&r<.72)t='mortar';if(n>=5&&r>.55&&r<.60)t='healer';if(n>=4&&r>.94&&budget>=6)t='brute';
         q.push(t);budget-=t==='crawler'?1:t==='brute'?7:t==='sniper'?3:2;}
       for(let i=q.length-1;i>0;i--){const j=(Math.random()*(i+1))|0,t=q[i];q[i]=q[j];q[j]=t;}
       WV.queue=q;WV.state='fight';spawnBarrels();WV.spT=1;announce('第 '+n+' 波',(G.mode===2||n%5===0)?'警告 · 重型单位接近':'WAVE '+n);SFX.wave();hudDirty();
@@ -1533,7 +1550,7 @@ function leg(hx,hy,fy,fz,L,w1,w2,c1,c2,cj){
   LEG.ky=ky;LEG.kz=kz;
 }
 const LEG={ky:0,kz:0};
-function drawEnemy(e){
+function drawEnemy0(e){
   const s=e.scale*(.3+.7*e.spawn),a=e.anim;FL=e.flash+(1-e.spawn)*.8+(e.prime>0&&Math.sin(e.prime*42)>0?.9:0);
   if(e.type==='crawler'){
     m4trs(BASE,e.x,e.y,e.z,-e.lunge*.3,e.yaw,0,s,s,s);
@@ -1913,11 +1930,11 @@ updLight();
 // time of day (1 = golden hour, 0 = night), weather and the light that goes with them
 const ENV={day:1,wet:0,flash:0,str:1,fl:0,sunC:[11,5.5,2.42],grc:[1,.55,.24],nextL:7,fl2:0,aN:0,aR:0,force:null,exp:1};
 const SUN0=SUN.slice(),MOON=(()=>{const v=[.55,.62,-.42],l=Math.hypot(v[0],v[1],v[2]);return v.map(x=>x/l);})(),SPT=[0,0,0];
-function resetEnv(){ENV.day=1;ENV.wet=0;ENV.flash=0;ENV.aN=0;ENV.aR=0;ENV.nextL=7;ENV.fl=0;}
+function resetEnv(){ENV.day=MAPS[CURMAP].day;ENV.wet=MAPS[CURMAP].wet;ENV.flash=0;ENV.aN=0;ENV.aR=0;ENV.nextL=7;ENV.fl=0;}
 function updEnv(dt){
   let dayT,wetT;
   if(G.state==='menu'){dayT=.5+.5*Math.cos(G.t*.045);wetT=dayT<.25?1:0;}
-  else{const n=Math.max(1,WV.n);dayT=clamp(1-(n-1)/5,0,1);wetT=(n>=3&&(n%4===3||n%4===0))?1:0;}
+  else{const n=Math.max(1,WV.n);dayT=clamp(MAPS[CURMAP].day-(n-1)/5,0,1);wetT=(MAPS[CURMAP].wet||(n>=3&&(n%4===3||n%4===0)))?1:0;}
   if(ENV.force){dayT=ENV.force[0];wetT=ENV.force[1];ENV.day=dayT;ENV.wet=wetT;}
   ENV.day+=(dayT-ENV.day)*(G.state==='menu'?1:1-Math.exp(-dt*.05));
   ENV.wet+=(wetT-ENV.wet)*(1-Math.exp(-dt*.14));
@@ -2075,7 +2092,7 @@ function render(){
   gl.uniform1i(pComp.u('uAO'),4);gl.uniform1i(pComp.u('uGR'),5);
   gl.uniform1f(pComp.u('uDmg'),G.state==='menu'?0:G.dmgFx+(P.hp<30?.25+.12*Math.sin(G.t*6):0));
   gl.uniform1f(pComp.u('uHp'),G.state==='menu'?1:G.state==='dead'?0:clamp(P.hp/45,0,1));
-  gl.uniform1f(pComp.u('uHeal'),G.healFx);gl.uniform1f(pComp.u('uBT'),G.btFx);gl.uniform1f(pComp.u('uShd'),G.shFx);gl.uniform1f(pComp.u('uExp'),ENV.exp);
+  gl.uniform1f(pComp.u('uHeal'),G.healFx);gl.uniform1f(pComp.u('uBT'),G.btFx);gl.uniform1f(pComp.u('uShd'),G.shFx);gl.uniform1f(pComp.u('uExp'),ENV.exp);gl.uniform3fv(pComp.u('uTint'),MAPS[CURMAP].tint);
   pass(RT.ldr);
   // FXAA + grain + vignette to screen
   gl.useProgram(pFxaa.p);tex(0,RT.ldr.tex);gl.uniform1i(pFxaa.u('uT'),0);gl.uniform2f(pFxaa.u('uPx'),1/w,1/h);
@@ -2373,12 +2390,17 @@ function syncModes(){
   document.querySelectorAll('#mMode b').forEach(b=>b.classList.toggle('on',+b.dataset.m===SET.mode));
   document.querySelectorAll('#mDiff b').forEach(b=>b.classList.toggle('on',+b.dataset.d===SET.diff));
   $('lockC').checked=!!SET.lock;$('lockL').classList.toggle('off',SET.diff!==0);
-  $('mDesc').textContent=MDESC[SET.mode]+(SET.diff===0?'　·　菜鸟：敌人更弱'+(SET.lock?'，准星自动吸附头部':''):SET.diff===2?'　·　噩梦：敌人更多更硬更疼':'');
+  $('mDesc').textContent=MAPS[SET.map].n+'：'+MAPS[SET.map].d+'　·　'+MDESC[SET.mode]+(SET.diff===0?'　·　菜鸟：敌人更弱'+(SET.lock?'，准星自动吸附头部':''):SET.diff===2?'　·　噩梦：敌人更多更硬更疼':'');
   loadBest();const el=$('best');if(el)el.textContent=BEST?'最高纪录　'+BEST.toLocaleString('en-US'):'';
 }
 $('mMode').addEventListener('click',e=>{const b=e.target.closest('b');if(b){SET.mode=+b.dataset.m;saveSet();syncModes();}});
 $('mDiff').addEventListener('click',e=>{const b=e.target.closest('b');if(b){SET.diff=+b.dataset.d;saveSet();syncModes();}});
 $('lockC').addEventListener('change',e=>{SET.lock=e.target.checked?1:0;saveSet();syncModes();});
+SET.map=SET.map===1||SET.map===2?SET.map:0;
+MAPS.forEach((m,i)=>{const b=document.createElement('b');b.dataset.p=i;b.textContent=m.n;b.title=m.d;$('mMap').appendChild(b);});
+function syncMap(){document.querySelectorAll('#mMap b').forEach(b=>b.classList.toggle('on',+b.dataset.p===SET.map));}
+$('mMap').addEventListener('click',e=>{const b=e.target.closest('b');if(!b)return;SET.map=+b.dataset.p;saveSet();syncMap();if(G.state==='menu'){setMap(SET.map);resetFx();}syncModes();});
+syncMap();
 const LMAX=5;
 SET.load=(Array.isArray(SET.load)?SET.load:[0,1,2,3]).filter((v,i,a)=>Number.isInteger(v)&&v>=0&&v<WP.length&&a.indexOf(v)===i).slice(0,LMAX);if(!SET.load.length)SET.load=[0,1,2,3];
 WP.forEach((w,i)=>{const b=document.createElement('b');b.dataset.w=i;b.innerHTML=w.name+(w.melee?'<i>近战</i>':'');$('mLoad').appendChild(b);});
@@ -2391,6 +2413,27 @@ $('mLoad').addEventListener('click',e=>{const b=e.target.closest('b');if(!b)retu
   saveSet();syncLoad();});
 syncLoad();
 syncModes();
+
+// enemy variants: drawn as their base model with swapped colours plus a few extra parts
+Object.assign(C,{lpB:[.3,.1,.4],lpH:[.16,.07,.22],lpA:[.6,.2,.8],moB:[.2,.3,.16],moA:[.5,.6,.2],hlB:[.82,.9,.84]});
+const VAR={leaper:{base:'crawler',c:[['crB','lpB'],['crH','lpH'],['crA','lpA'],['org','mag']]},
+  mortar:{base:'trooper',c:[['trB','moB'],['trA','moA']]},healer:{base:'drone',c:[['drB','hlB'],['cyan','grn'],['red','grn']]}};
+function drawEnemy(e){
+  const v=VAR[e.type];if(!v){drawEnemy0(e);return;}
+  const t=e.type,sv=v.c.map(k=>C[k[0]]);v.c.forEach(k=>{C[k[0]]=C[k[1]];});e.type=v.base;drawEnemy0(e);e.type=t;v.c.forEach((k,i)=>{C[k[0]]=sv[i];});
+  if(t==='mortar'){cy(-.2,1.75,-.22,.55,0,0,.17,.75,C.gun2,0,8);cy(-.2,2.06,-.03,.55,0,0,.19,.05,C.moA,0,6);sp(-.2,2.02,-.05,.1,.1,.1,C.org,2+e.charge*8,0);}
+  else if(t==='healer'){bx(0,.2,0,0,0,0,.26,.07,.08,C.grn,5,0,.01);bx(0,.2,0,0,0,0,.08,.07,.26,C.grn,5,0,.01);sp(0,-.22,0,.16,.16,.16,C.grn,3+e.charge*6,0);}
+  else{for(const sd of[-1,1])bx(sd*.2,.62,-.2,.5,0,sd*.3,.05,.3,.05,C.mag,3,0,.01);}
+}
+function healPulse(h){
+  let best=null,bd=0;
+  for(const e of enemies){if(e===h||e.dead||e.type==='healer'||e.hp>=e.hp0)continue;const d=Math.hypot(e.x-h.x,e.z-h.z);if(d>15)continue;const need=1-e.hp/e.hp0;if(need>bd){bd=need;best=e;}}
+  if(!best)return;
+  best.hp=Math.min(best.hp0,best.hp+(best.boss?60:20));
+  const cy2=best.y+ET[best.type].eye*.6*best.scale;
+  tracers.push({ax:h.x,ay:h.y-.2,az:h.z,bx:best.x,by:cy2,bz:best.z,life:.3,max:.3,c:[.2,1,.45],w:.07});
+  glow(best.x,cy2,best.z,1.2,[.4,2,.8],.3);
+}
 
 // ───────────────────────── HUD ─────────────────────────
 const E={hud:$('hud'),menu:$('menu'),pause:$('pause'),over:$('over'),cross:$('cross'),hit:$('hit'),wave:$('wave'),left:$('left'),
@@ -2438,7 +2481,7 @@ function drawRadar(){
 function show(el,v){el.classList.toggle('hide',!v);}
 function lock(){if(G.noLock)return;try{const p=canvas.requestPointerLock();if(p&&p.catch)p.catch(()=>{});}catch(e){}}
 function startGame(){
-  initAudio();resetGame();G.state='play';G.fade=0;G.mode=SET.mode;G.diff=SET.diff;G.lock=SET.diff===0&&!!SET.lock;G.timeLeft=180;G.load=SET.load.slice();P.w=G.load[0];P.last=G.load[1]===undefined?G.load[0]:G.load[1];buildSlots();hudDirty();
+  initAudio();setMap(SET.map);resetGame();G.state='play';G.fade=0;G.mode=SET.mode;G.diff=SET.diff;G.lock=SET.diff===0&&!!SET.lock;G.timeLeft=180;G.load=SET.load.slice();P.w=G.load[0];P.last=G.load[1]===undefined?G.load[0]:G.load[1];buildSlots();hudDirty();
   if(G.mode===1){WV.timer=1.5;}show(E.menu,false);show(E.over,false);show(E.pause,false);show(E.hud,true);lock();
   if(G.touch){try{const el=document.documentElement,r=el.requestFullscreen&&el.requestFullscreen();if(r&&r.then)r.then(()=>{try{screen.orientation.lock('landscape').catch(()=>{});}catch(e){}}).catch(()=>{});}catch(e){}}
   setTimeout(()=>{if(G.state==='play'&&WV.n<=1)feed(G.touch?'准星对准敌人会自动开火':'<b>E</b> 冲刺　<b>F</b> 近战　<b>Q</b> 子弹时间');},1600);
@@ -2503,7 +2546,7 @@ if(G.touch&&!SET.tq){SET.q=0;SET.tq=1;}
 SET.q=clamp(SET.q|0,0,3);syncSet();
 
 // ───────────────────────── main loop ─────────────────────────
-buildWorld();buildShadow();
+CURMAP=SET.map===1||SET.map===2?SET.map:0;buildWorld();buildShadow();
 E.best.textContent=BEST?'最高纪录　'+BEST.toLocaleString('en-US'):'';
 let last=performance.now(),fpsT=0,fpsN=0,frame=0;
 function tick(now){
