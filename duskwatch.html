@@ -1352,12 +1352,14 @@ function hitscan(ox,oy,oz,dx,dy,dz,w,mx,my,mz){
 }
 function hurtPlayer(d,sx,sz){
   if(G.state!=='play')return;
-  if(P.inv>0)return;P.shT=4;
-  if(P.sh>0){const a=Math.min(P.sh,d);P.sh-=a;d-=a;G.shFx=Math.min(1,G.shFx+a/14);if(P.sh<=0)SFX.shbreak();else SFX.shhit();}
+  if(P.inv>0)return;P.shT=4;d*=P.armor;
+  if(P.sh>0){const a=Math.min(P.sh,d);P.sh-=a;d-=a;G.shFx=Math.min(1,G.shFx+a/14);if(P.sh<=0){SFX.shbreak();if(P.nova)novaBlast();}else SFX.shhit();}
   P.hp-=d;G.dmgFx=Math.min(1,G.dmgFx+d/22);G.shake=Math.min(1.6,G.shake+d/30+.08);if(d>0)SFX.hurt();
   const dx=sx-P.x,dz=sz-P.z,fwd=dx*Math.sin(P.yaw)+dz*Math.cos(P.yaw),rt=dx*-Math.cos(P.yaw)+dz*Math.sin(P.yaw);
   dmgArc(Math.atan2(rt,fwd));hudDirty();
-  if(P.hp<=0){P.hp=0;die();}
+  if(P.hp<=0){
+    if(P.revive>0){P.revive=0;P.hp=70;P.sh=P.shMax;P.inv=2.5;G.healFx=1;G.slowT=1;novaBlast();announce('重生协议启动','SECOND CHANCE');SFX.perk();hudDirty();}
+    else{P.hp=0;die();}}
 }
 
 // ───────────────────────── enemies ─────────────────────────
@@ -1374,6 +1376,8 @@ function hurtEnemy(e,dmg,crit,x,y,z,silent){
   if(e.shHp>0&&e.charge<=0&&(P.x-e.x)*Math.sin(e.yaw)+(P.z-e.z)*Math.cos(e.yaw)>0){
     e.shHp-=dmg;dmg*=.1;crit=false;spark(x,y,z,4,C.cyan,5,8,.04);if(e.shHp<=0){SFX.shbreak();spark(e.x,e.y+1.2,e.z,18,C.cyan,8,9,.06);feed('<b style="color:#5ff">护盾击破</b>');}else SFX.shhit();}
   e.hp-=dmg;e.flash=1;dmgNum(e,dmg,crit,x,y,z);
+  if(P.frost)e.slowT=2;if(P.burn)e.burnT=3;
+  if(P.exec&&!e.boss&&e.hp>0&&e.hp<e.hp0*.15){e.hp=0;spark(x,y,z,10,[1,.2,.2],8,9,.05);}
   spark(x,y,z,crit?9:5,crit?[1,.9,.4]:C.org,6,8,.05);
   if(e.hp<=0){killEnemy(e,crit);hitMark('kill');}
   else{hitMark(crit?'crit':'');if(!silent){if(crit)SFX.crit();else SFX.hit();}}
@@ -1383,6 +1387,7 @@ function killEnemy(e,crit){
   G.kills++;G.combo++;G.comboT=4;
   if(e.type==='splitter')for(let i=0;i<3;i++){const c=spawnEnemy('crawler',clamp(e.x+rnd(-1.2,1.2),-44,44),clamp(e.z+rnd(-1.2,1.2),-44,44));c.scale=.6;c.hp=c.hp0=18;c.spawn=.7;c.born=G.t+.3;}
   P.ult=Math.min(100,P.ult+(crit?11:8)*P.ultM*(e.boss?4:1)*(G.mode===3?2.5:1));if(P.leech)P.hp=Math.min(100,P.hp+P.leech);
+  if(P.adr)P.adrT=3;if(P.refill){const ws=WS[P.w],mg=magOf(P.w);if(!WP[P.w].melee&&ws.mag<mg)ws.mag=Math.min(mg,ws.mag+Math.ceil(mg*P.refill));}
   if(e.type==='bomber')boomQ.push({x:e.x,y:.5,z:e.z,r:4.2,d:90,t:.05});
   else if(P.boomCh&&Math.random()<P.boomCh)boomQ.push({x:e.x,y:cy,z:e.z,r:3.2,d:70,t:.06});
   if(G.state==='play'&&!WV.queue.length&&!enemies.some(o=>!o.dead))G.slowT=.8;
@@ -1394,7 +1399,7 @@ function killEnemy(e,crit){
   light(e.x,cy+.3,e.z,big?16:9,[6,2.6,.8],.3);SFX.die(e.x,cy,e.z);SFX.kill();deathFx(e.x,cy,e.z,big);
   if(big){G.shake+=.5;}
   const r=Math.random(),need=P.hp<55;
-  if(big||r<(need?.3:.2)){
+  if(big||r<(need?.3:.2)*(1+P.luck)){
     const k=big?(Math.random()<.5?'am':'hp'):(need&&Math.random()<.6?'hp':(Math.random()<.45?'hp':'am'));
     pickups.push({k,x:e.x,z:e.z,y:.6,life:22,t:Math.random()*6});
     if(e.boss)pickups.push({k:'hp',x:e.x+1,z:e.z,y:.6,life:22,t:0});
@@ -1417,7 +1422,9 @@ function updEnemies(dt){
     if(e.hp<T.hp*.45&&Math.random()<dt*7)smoke(e.x+rnd(-.2,.2),e.y+T.eye*s*.8+.2,e.z+rnd(-.2,.2),.25,[.12,.11,.11],1.2,1.4,.7);e.lunge=Math.max(0,e.lunge-dt*4);
     const dx=P.x-e.x,dz=P.z-e.z,d=Math.hypot(dx,dz)||.001,ux=dx/d,uz=dz/d;
     e.losT-=dt;if(e.losT<=0){e.losT=rnd(.18,.32);e.los=los(e.x,e.y+T.eye*s+.1,e.z,P.x,P.y+1.3,P.z);}
-    let wx=0,wz=0,spd=T.speed*(1+WV.n*.012),face=Math.atan2(dx,dz);
+    let wx=0,wz=0,spd=T.speed*(1+WV.n*.012)*(e.slowT>0?.6:1),face=Math.atan2(dx,dz);
+    if(e.slowT>0)e.slowT-=dt;
+    if(e.burnT>0){e.burnT-=dt;e.hp-=P.burn*dt;if(Math.random()<dt*9)fx(2,e.x+rnd(-.3,.3),e.y+T.eye*s*.5+rnd(0,.5),e.z+rnd(-.3,.3),0,1.5,0,.18,.6,.4,[3,3,3],1,1,0);if(e.hp<=0){e.type=rt;killEnemy(e,false);continue;}}
     if(e.spawn<1){spd*=.3;}
     if(e.type==='crawler'||e.type==='leaper'){
       if(e.type==='leaper'&&e.los&&d<10&&d>3.5&&e.cd<=0&&alive){e.cd=1.5;e.vx=ux*24;e.vz=uz*24;e.lunge=1;SFX.growl(e.x,.5,e.z);}
@@ -1567,13 +1574,14 @@ function updWave(dt){
   }
 }
 function updPlayer(dt){
+  P.adrT-=dt;P.dmgM=P.dmgB*(1+(P.frenzy?Math.min(G.combo,10)*.03:0))*(P.hp<40?1+P.berserk:1);
   P.slowT=(P.slowT||0)-dt;
   if(G.lock)lockAim(dt);
   const sy=Math.sin(P.yaw),cy=Math.cos(P.yaw);
   const mx=(K.KeyD?1:0)-(K.KeyA?1:0)+TC.jx,mz=(K.KeyW?1:0)-(K.KeyS?1:0)-TC.jy;
   let wx=sy*mz-cy*mx,wz=cy*mz+sy*mx;const wl=Math.hypot(wx,wz);if(wl>1){wx/=wl;wz/=wl;}
   P.ads+=((M.r&&P.reload<=0?1:0)-P.ads)*Math.min(1,dt*14);
-  const sprint=(K.ShiftLeft||K.ShiftRight||TC.run)&&mz>0&&P.ads<.5,sp=(sprint?9.4:6.3*(1-P.ads*.4))*P.spdM*(P.slowT>0?.6:1);
+  const sprint=(K.ShiftLeft||K.ShiftRight||TC.run)&&mz>0&&P.ads<.5,sp=(sprint?9.4:6.3*(1-P.ads*.4))*P.spdM*(P.slowT>0?.6:1)*(P.adrT>0?1+P.adr:1);
   const ac=1-Math.exp(-dt*(P.ground?13:2.5));
   if(P.dashT>0){P.dashT-=dt;P.vx=P.dx*27;P.vz=P.dz*27;}else{P.vx+=(wx*sp-P.vx)*ac;P.vz+=(wz*sp-P.vz)*ac;}
   if((K.Space||P.jumpQ)&&P.ground){P.vy=6.7;P.ground=false;SFX.jump();}
@@ -1590,7 +1598,7 @@ function updPlayer(dt){
   const hs=Math.hypot(P.vx,P.vz);
   if(P.ground&&hs>1){P.bob+=hs*dt*1.25;P.stepT-=hs*dt;if(P.stepT<=0){P.stepT=sprint?3.3:2.7;SFX.step();}}
   P.inv-=dt;P.dashCd-=dt;P.meleeCd-=dt;P.meleeT=Math.max(0,P.meleeT-dt);P.shT-=dt;
-  if(P.shT<=0&&P.sh<P.shMax){if(P.sh<=0)SFX.shup();P.sh=Math.min(P.shMax,P.sh+dt*(G.diff===0?28:14));}
+  if(P.shT<=0&&P.sh<P.shMax){if(P.sh<=0)SFX.shup();P.sh=Math.min(P.shMax,P.sh+dt*(G.diff===0?28:14)*P.shR);}
   if(P.hp<30){P.hbT-=dt;if(P.hbT<=0){P.hbT=.85;SFX.heart();}}
   if(P.w===7&&M.l&&P.reload<=0)P.spin+=dt*40;
   P.cd-=dt;P.sw=Math.max(0,P.sw-dt);P.flashT-=dt;P.vmKick=Math.max(0,P.vmKick-dt*9);
@@ -2190,7 +2198,7 @@ const TC={jx:0,jy:0,run:false,move:null,look:null};
 const PK={};
 const magOf=i=>Math.round(WP[i].mag*P.magM);
 function resetPerks(){
-  Object.assign(P,{dmgM:1,magM:1,reloadM:1,rateM:1,leech:0,spdM:1,djump:0,boomCh:0,critM:2,dashM:1,ultM:1,ammoM:1,pierce:0,gradM:1,meleeM:1,shMax:50});
+  Object.assign(P,{dmgB:1,adr:0,adrT:0,refill:0,nova:0,revive:0,frost:0,burn:0,luck:0,frenzy:0,berserk:0,exec:0,dashBoom:0,shR:1,btX:0,armor:1,dmgM:1,magM:1,reloadM:1,rateM:1,leech:0,spdM:1,djump:0,boomCh:0,critM:2,dashM:1,ultM:1,ammoM:1,pierce:0,gradM:1,meleeM:1,shMax:50});
   for(const k in PK)delete PK[k];
 }
 Object.assign(P,{spin:0,sh:50,shT:0,inv:0,dashT:0,dashCd:0,dx:0,dz:0,meleeT:0,meleeCd:0,ult:0,airJ:0,jumpQ:false,rlMax:1,hbT:0});
@@ -2232,6 +2240,7 @@ function doDash(){
   if(Math.abs(mx)<.2&&Math.abs(mz)<.2){mx=0;mz=1;}
   const wx=sy*mz-cy*mx,wz=cy*mz+sy*mx,l=Math.hypot(wx,wz)||1;
   P.dx=wx/l;P.dz=wz/l;P.dashT=.15;P.dashCd=2.2*P.dashM;P.inv=.32;SFX.dash();G.shake+=.12;
+  if(P.dashBoom)boomQ.push({x:P.x,y:.5,z:P.z,r:3.4,d:70*P.dashBoom,t:.3});
   for(let i=0;i<7;i++)fx(1,P.x+rnd(-.3,.3),P.y+rnd(.2,1.5),P.z+rnd(-.3,.3),-P.dx*3,rnd(0,.5),-P.dz*3,.25,.8,.4,[.5,.8,1],.22,2,0);
 }
 function doMelee(){
@@ -2251,7 +2260,7 @@ function doMelee(){
 }
 function doUlt(){
   if(G.state!=='play'||P.ult<100||G.bt>0)return;
-  P.ult=0;G.bt=5;SFX.ult();announce('子弹时间','OVERDRIVE');hudDirty();
+  P.ult=0;G.bt=5+P.btX;SFX.ult();announce('子弹时间','OVERDRIVE');hudDirty();
 }
 // floating damage numbers (DOM, projected with the last view-projection matrix)
 function dmgNum(e,v,crit,x,y,z){
@@ -2287,7 +2296,7 @@ function updExtra(dt){
 }
 // between-wave upgrades
 const PERKS=[
-  {id:'dmg',n:'强装药',d:'全武器伤害 +15%',max:5,f:()=>{P.dmgM*=1.15;}},
+  {id:'dmg',n:'强装药',d:'全武器伤害 +15%',max:5,f:()=>{P.dmgB*=1.15;}},
   {id:'mag',n:'扩容弹匣',d:'弹匣容量 +30%',max:3,f:()=>{P.magM+=.3;for(let i=0;i<WP.length;i++)WS[i].mag=magOf(i);}},
   {id:'rld',n:'快手',d:'换弹速度 +30%',max:3,f:()=>{P.reloadM+=.3;}},
   {id:'rate',n:'高速枪机',d:'射速 +12%',max:4,f:()=>{P.rateM+=.12;}},
@@ -2302,7 +2311,21 @@ const PERKS=[
   {id:'ammo',n:'弹药合成',d:'所有弹药补给 +60%',max:2,f:()=>{P.ammoM+=.6;}},
   {id:'prc',n:'穿甲弹',d:'手枪与步枪子弹可穿透一个敌人',max:1,rare:1,f:()=>{P.pierce=1;}},
   {id:'grad',n:'高爆装药',d:'榴弹爆炸半径 +30%',max:2,f:()=>{P.gradM+=.3;}},
-  {id:'mel',n:'近战大师',d:'近战伤害翻倍',max:2,f:()=>{P.meleeM*=2;}}
+  {id:'mel',n:'近战大师',d:'近战伤害翻倍',max:2,f:()=>{P.meleeM*=2;}},
+  {id:'adr',n:'肾上腺素',d:'击杀后 3 秒内移动速度 +25%',max:2,f:()=>{P.adr+=.25;}},
+  {id:'refill',n:'战利弹药',d:'每次击杀回填当前弹匣 20%',max:2,f:()=>{P.refill+=.2;}},
+  {id:'nova',n:'护盾新星',d:'护盾被打破时释放冲击波，震伤周围敌人',max:2,rare:1,f:()=>{P.nova+=1;}},
+  {id:'revive',n:'重生协议',d:'阵亡时原地复活一次',max:1,rare:1,f:()=>{P.revive=1;}},
+  {id:'frost',n:'冷冻弹',d:'命中的敌人减速 40%，持续 2 秒',max:1,f:()=>{P.frost=1;}},
+  {id:'burn',n:'燃烧弹',d:'命中后点燃敌人，每秒 10 点伤害持续 3 秒',max:3,f:()=>{P.burn+=10;}},
+  {id:'luck',n:'幸运掉落',d:'敌人掉落补给的概率 +50%',max:2,f:()=>{P.luck+=.5;}},
+  {id:'frenzy',n:'连杀狂热',d:'每层连杀 +3% 伤害，最多 +30%',max:1,rare:1,f:()=>{P.frenzy=1;}},
+  {id:'berserk',n:'背水一战',d:'生命低于 40 时伤害 +40%',max:2,f:()=>{P.berserk+=.4;}},
+  {id:'exec',n:'处决',d:'生命低于 15% 的普通敌人被命中时直接击杀',max:1,rare:1,f:()=>{P.exec=1;}},
+  {id:'dboom',n:'冲刺炸药',d:'冲刺时在原地留下一枚炸弹',max:2,f:()=>{P.dashBoom+=1;}},
+  {id:'shr',n:'快速充能',d:'护盾回充速度 +60%',max:2,f:()=>{P.shR+=.6;}},
+  {id:'btx',n:'时间膨胀',d:'子弹时间延长 2 秒',max:2,f:()=>{P.btX+=2;}},
+  {id:'armor',n:'复合装甲',d:'受到的伤害 -12%',max:3,f:()=>{P.armor*=.88;}}
 ];
 function showCards(){
   const pool=PERKS.filter(p=>(PK[p.id]||0)<p.max),list=[];
@@ -2316,6 +2339,11 @@ function pickCard(i){
   if(!CARDS.open||!CARDS.list[i])return;
   const p=CARDS.list[i];p.f();PK[p.id]=(PK[p.id]||0)+1;G.perks=(G.perks||0)+1;
   CARDS.open=false;show($('cards'),false);SFX.perk();feed('<b style="color:#ffb35c">'+p.n+'</b>');hudDirty();
+}
+function novaBlast(){
+  fx(4,P.x,.1,P.z,0,0,0,1,26,.35,[.6,1.6,3],1,0,0,1);light(P.x,1,P.z,14,[1,2.5,5],.25);G.shake+=.4;
+  for(const e of enemies){if(e.dead)continue;const dx=e.x-P.x,dz=e.z-P.z,d=Math.hypot(dx,dz)||.01;if(d>7)continue;
+    e.vx+=dx/d*16;e.vz+=dz/d*16;hurtEnemy(e,60*Math.max(1,P.nova),false,e.x,e.y+ET[e.type].eye*.6*e.scale,e.z,true);}
 }
 function hideCards(){CARDS.open=false;show($('cards'),false);}
 $('cardRow').addEventListener('click',e=>{const c=e.target.closest('.card');if(c)pickCard(+c.dataset.i);});
