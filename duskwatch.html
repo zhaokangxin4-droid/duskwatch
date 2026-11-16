@@ -295,13 +295,16 @@ function m4look(o,ex,ey,ez,fx,fy,fz,ux,uy,uz){
 // ───────────────────────── settings ─────────────────────────
 const SET={q:3,sens:1,vol:.7,fov:85,mode:0,diff:1,lock:1,load:[0,1,2,3],map:0};
 const MAPS=[
-  {n:'天台哨站',d:'黄昏的城市天台，掩体均衡',seed:7741,ground:[.21,.21,.235],tint:[1,1,1],day:1,wet:0,
+  {n:'天台哨站',d:'橙色黄昏下的城市天台，高楼环绕，掩体均衡',seed:7741,peri:0,ground:[.21,.21,.235],tint:[1,1,1],sky:[1,1,1,0],sunT:[1,1,1],day:1,wet:0,by:3,
    plan:['pillar','lamp','lamp','cont','cont','cont','cont','cont','vent','vent','bar','bar','sand','sand','crate','crate','crate','crate','drum','drum','drum','xbar','xbar','xbar']},
-  {n:'集装箱码头',d:'货柜堆成迷宫，视线短，油桶多',seed:20261,ground:[.15,.17,.19],tint:[.9,1,1.1],day:.8,wet:0,
-   plan:['lamp','lamp','lamp','cont','cont','cont','cont','cont','cont','cont','cont','cont','cont','cont','crate','crate','crate','drum','drum','drum','drum','xbar','xbar','xbar','xbar','xbar']},
-  {n:'雨夜工厂',d:'暴雨中的厂区，开阔地多，一开场就是雨夜',seed:977,ground:[.24,.2,.17],tint:[1.06,1,.9],day:.2,wet:1,
-   plan:['pillar','pillar','pillar','lamp','lamp','vent','vent','vent','vent','bar','bar','bar','bar','sand','sand','sand','crate','crate','drum','xbar','xbar']}
+  {n:'集装箱码头',d:'晴朗的蓝色海港：货柜排成巷道，头顶是龙门吊，岸边停着货轮',seed:20261,peri:1,rows:1,ground:[.13,.15,.17],tint:[.92,1,1.08],sky:[.62,1.3,2.5,.00005],sunT:[.7,1.3,2.5],el:.8,ex:1.2,day:1,wet:0,by:15.8,
+   neon:[[.1,.8,1],[1,.8,.2],[.9,.95,1],[.1,.8,1]],
+   plan:['lamp','lamp','lamp','bar','crate','crate','crate','drum','drum','drum','xbar','xbar','xbar','xbar']},
+  {n:'毒雾工厂',d:'黄绿色浓雾里的化工厂：储罐、管道、冒烟的烟囱，能见度低',seed:977,peri:2,ground:[.25,.21,.15],tint:[1.04,1.02,.9],sky:[.95,1.05,.5,.00028],sunT:[1.1,1,.6],day:.75,wet:0,by:-30,
+   neon:[[1,.5,.05],[.3,1,.2],[1,.5,.05],[1,.2,.1]],
+   plan:['pillar','lamp','lamp','tank','tank','tank','pipe','pipe','pipe','pipe','vent','vent','bar','sand','crate','crate','drum','drum','xbar','xbar','xbar']}
 ];
+const STACKS=[];let stackT=0;
 let CURMAP=0;
 try{Object.assign(SET,JSON.parse(localStorage.getItem('duskwatch.set2')||'{}'));}catch(e){}
 const saveSet=()=>{try{localStorage.setItem('duskwatch.set2',JSON.stringify(SET));}catch(e){}};
@@ -318,7 +321,7 @@ float noise(vec3 x){vec3 i=floor(x),f=fract(x);f=f*f*(3.-2.*f);
  return mix(mix(mix(hash(i),hash(i+vec3(1,0,0)),f.x),mix(hash(i+vec3(0,1,0)),hash(i+vec3(1,1,0)),f.x),f.y),
             mix(mix(hash(i+vec3(0,0,1)),hash(i+vec3(1,0,1)),f.x),mix(hash(i+vec3(0,1,1)),hash(i+vec3(1,1,1)),f.x),f.y),f.z);}
 float fbm(vec3 p){return noise(p)*.55+noise(p*2.03)*.28+noise(p*4.1)*.17;}
-uniform vec3 uSun;uniform vec4 uEnv;
+uniform vec3 uSun;uniform vec4 uEnv,uSkyT;
 vec3 pal3(vec3 a,vec3 b,vec3 c,float t){return t>.5?mix(b,a,t*2.-1.):mix(c,b,t*2.);}
 vec3 skyBase(vec3 d){
   float y=max(d.y,0.),t=uEnv.x;
@@ -327,7 +330,7 @@ vec3 skyBase(vec3 d){
   float s=max(dot(d,uSun),0.);
   c+=mix(vec3(.16,.24,.45),vec3(1.3,.5,.14)*.55,smoothstep(.3,.55,t))*pow(s,5.)*uEnv.w;
   c*=1.-.4*uEnv.y;
-  return c+vec3(.45,.5,.65)*uEnv.z;
+  return c*uSkyT.rgb+vec3(.45,.5,.65)*uEnv.z;
 }
 vec3 skyEnv(vec3 d){return d.y>0.?skyBase(d):mix(skyBase(vec3(d.x,0.,d.z)),vec3(.07,.055,.06),smoothstep(0.,-.3,d.y));}`;
 const VS_SCENE=`#version 300 es
@@ -387,7 +390,9 @@ void main(){
     float ring=clamp((1.-smoothstep(.12,.12+gw,abs(r-9.)))+(1.-smoothstep(.09,.09+gw,abs(r-4.4))),0.,1.);
     vec2 ag=abs(g);float am=max(ag.x,ag.y);
     float lane=(1.-smoothstep(.1,.1+gw,min(ag.x,ag.y)))*step(11.5,am)*step(am,44.)*step(.5,fract(am/4.2));
-    alb=mix(alb,vec3(.6,.44,.08),ring*wp*.85);alb=mix(alb,vec3(.46),lane*wp*.8);
+    float mpi=vD.z;alb=mix(alb,vec3(.6,.44,.08),ring*wp*.85*step(mpi,.5));
+    if(mpi>.5&&mpi<1.5){float l1=(1.-smoothstep(.07,.07+gw,abs(fract(g.x/7.5+.5)-.5)*7.5))*step(am,44.);alb=mix(alb,vec3(.62,.5,.1),l1*wp*.75);}
+    if(mpi>1.5)alb=mix(alb,vec3(.2,.3,.06),smoothstep(.5,.75,fbm(vec3(g*.09,9.)))*.6);alb=mix(alb,vec3(.46),lane*wp*.8);
     float pw=.24*uEnv.y;pud=smoothstep(.54-pw,.66-pw,fbm(vec3(g*.11,3.)))*(1.-seam);
     h=(g2*.012+gn*.03-seam*.04)*(1.-pud);
     if(uEnv.y>.01){vec2 rp=g*1.6,rc=floor(rp),rf=fract(rp)-.5;float rh=hash(vec3(rc,2.)),ph=fract(uTime*1.4+rh*7.),rr=length(rf);
@@ -463,7 +468,7 @@ void main(){
     float at=smoothstep(.80,.96,dot(-l,uSpotDir))/(1.+d2*.006)*clamp(1.-d2/2500.,0.,1.);
     if(at>0.)c+=brdf(N,V,l,dif,F0,a2,k)*vec3(1.,.95,.86)*at*uSpot.w*PI;}
   float aoG=(side&&m!=1)?mix(.55,1.,smoothstep(0.,1.3,vW.y)):1.;
-  vec3 amb=mix(pal3(vec3(.11,.075,.085),vec3(.06,.045,.07),vec3(.022,.024,.04),uEnv.x),pal3(vec3(.20,.19,.36),vec3(.10,.10,.24),vec3(.04,.05,.115),uEnv.x),N.y*.5+.5)*(1.-.25*uEnv.y)+vec3(.5,.55,.7)*uEnv.z;
+  vec3 amb=mix(pal3(vec3(.11,.075,.085),vec3(.06,.045,.07),vec3(.022,.024,.04),uEnv.x),pal3(vec3(.20,.19,.36),vec3(.10,.10,.24),vec3(.04,.05,.115),uEnv.x),N.y*.5+.5)*(1.-.25*uEnv.y)*mix(vec3(1.),uSkyT.rgb,.7)+vec3(.5,.55,.7)*uEnv.z;
   float nv=max(dot(N,V),0.);vec3 R=reflect(-V,N);
   vec3 env=skyEnv(R);
   if(m==1&&uUseRefl>.5)env=texture(uRefl,gl_FragCoord.xy*uInv+N.xz*.04).rgb;
@@ -471,7 +476,7 @@ void main(){
   vec3 Fe=F0+(max(vec3(1.-rough),F0)-F0)*pow(1.-nv,5.);
   c+=(dif*amb+env*Fe*mix(.6,1.,sh))*aoG;
   c+=emi;
-  float fg=1.-exp(-dist*dist*(.00008+.0003*uEnv.y));
+  float fg=1.-exp(-dist*dist*(.00008+.0003*uEnv.y+uSkyT.w));
   vec3 vd=-V;c=mix(c,skyBase(normalize(vec3(vd.x,.035,vd.z)))*.62,fg);
   o=vec4(c,1.);
 }`;
@@ -771,15 +776,16 @@ const SS=(x,y,z,sx,sy,sz,c,e,mat)=>stat.m[2].put(x,y,z,0,0,0,sx,sy,sz,c,e||0,mat
 function setMap(i){i=i===1||i===2?i:0;if(i===CURMAP)return;CURMAP=i;buildWorld();}
 function buildWorld(){
   const MP=MAPS[CURMAP],R=rng(MP.seed);
-  stat.reset();ground.reset();COL.length=LIGHTS.length=GATES.length=VENTS.length=GLARE.length=0;barrels.length=0;for(const l of CG)l.length=0;
+  stat.reset();ground.reset();COL.length=LIGHTS.length=GATES.length=VENTS.length=GLARE.length=0;barrels.length=0;STACKS.length=0;for(const l of CG)l.length=0;
   const pal=[[.08,.36,.40],[.55,.19,.09],[.11,.17,.36],[.60,.44,.10],[.48,.48,.50],[.36,.09,.13]];
   const dk=[.1,.1,.12],stl=[.3,.31,.34],rustc=[.36,.22,.14];
-  ground.m[0].put(0,-1,0,0,0,0,130,2,130,MP.ground,0,1,0,0);ground.upload();
+  ground.m[0].put(0,-1,0,0,0,0,130,2,130,MP.ground,0,1,CURMAP,0);ground.upload();
   // perimeter towers
   const bc=[[.17,.18,.24],[.21,.19,.21],[.14,.16,.20],[.23,.21,.25]];
-  const neon=[[1,.15,.6],[.1,.8,1],[1,.55,.1],[.25,1,.5]];
+  const neon=MP.neon||[[1,.15,.6],[.1,.8,1],[1,.55,.1],[.25,1,.5]];
   for(let s=0;s<4;s++){
     const sg=s%2===0?1:-1;
+    if(MP.peri===1)harborSide(s,sg);else if(MP.peri===2)factorySide(s,sg);else
     for(let i=0;i<8;i++){
       const a=-50+12.5*(i+.5),h=11+R()*17,c=bc[(R()*4)|0],sd=R()*50;
       const cx=s===0?52:s===1?-52:a,cz=s===2?52:s===3?-52:a,wx=s<2?12:12.5,wz=s<2?12.5:12;
@@ -790,12 +796,12 @@ function buildWorld(){
       if(R()<.4)SC(cx+(R()-.5)*5,h+1.9,cz+(R()-.5)*5,2.4,3,rustc,0,2,0,0,sd);
     }
     // pipes along the wall
-    if(s<2){SC(sg*45.8,5.45,0,.3,92,rustc,0,4,HPI,0,3);SC(sg*45.85,5.82,0,.16,92,stl,0,8,HPI,0,5);
+    if(MP.peri===1){}else if(s<2){SC(sg*45.8,5.45,0,.3,92,rustc,0,4,HPI,0,3);SC(sg*45.85,5.82,0,.16,92,stl,0,8,HPI,0,5);
       for(let k=-44;k<=44;k+=8)SB(sg*45.9,5.6,k,.12,.7,.12,dk,0,8);}
     else{SC(0,5.45,sg*45.8,.3,92,rustc,0,4,0,HPI,3);SC(0,5.82,sg*45.85,.16,92,stl,0,8,0,HPI,5);
       for(let k=-44;k<=44;k+=8)SB(k,5.6,sg*45.9,.12,.7,.12,dk,0,8);}
     for(const a0 of[-33,0,33]){
-      if(R()<.2)continue;
+      if(R()<.2||(MP.peri===1&&s===2))continue;
       const a=a0+(R()-.5)*5,y=7.4+R()*2.5,col=neon[(R()*4)|0],vert=R()<.4,len=vert?1.1:4+R()*3,hh=vert?4.5:1+R()*.6;
       const lc=[col[0]*1.7,col[1]*1.7,col[2]*1.7];
       if(s<2){SB(sg*45.95,y,a,.1,hh+.3,len+.3,dk,0,4,0,0,.03);SB(sg*45.86,y,a,.1,hh,len,col,5,0,0,0,.04);
@@ -804,7 +810,11 @@ function buildWorld(){
         LIGHTS.push({x:a,y:y-.5,z:sg*43.2,r:19,c:lc});GLARE.push({x:a,y,z:sg*45.7,s:Math.max(len,hh)*.9,c:col});}
     }
   }
-  for(const sx of[-1,1])for(const sz of[-1,1])SB(sx*52,16,sz*52,12,32,12,bc[0],0,7,0,R()*50,0);
+  for(const sx of[-1,1])for(const sz of[-1,1]){
+    if(MP.peri===0)SB(sx*52,16,sz*52,12,32,12,bc[0],0,7,0,R()*50,0);
+    else if(MP.peri===1)SB(sx*53,6.5,sz*53,14,13,14,[.2,.25,.3],0,2,0,sx+sz,.1);
+    else{SC(sx*53,9,sz*53,13,18,[.33,.25,.16],0,2,0,0,sx*3+sz);SC(sx*53,18.3,sz*53,8,.6,dk,0,8);}
+  }
   // gates
   const gm=[.11,.11,.13];
   for(let s=0;s<4;s++)for(const g of[-20,20]){
@@ -818,10 +828,55 @@ function buildWorld(){
     LIGHTS.push({x:G0.sx,y:2.4,z:G0.sz,r:11,c:[1.5,.32,.12]});
   }
   // centre beacon
-  SC(0,.25,0,2.5,.5,stl,0,4);SC(0,.85,0,1.7,.75,[.16,.17,.2],0,6);SC(0,1.25,0,2.0,.1,[1,1,1],0,5);SC(0,1.9,0,.16,1.2,dk,0,8);
+  if(MP.peri===0){SC(0,.25,0,2.5,.5,stl,0,4);SC(0,.85,0,1.7,.75,[.16,.17,.2],0,6);SC(0,1.25,0,2.0,.1,[1,1,1],0,5);SC(0,1.9,0,.16,1.2,dk,0,8);}
   for(let i=0;i<4;i++){const a=i*HPI+.78;SB(Math.cos(a)*1.05,.5,Math.sin(a)*1.05,.3,.9,.3,gm,0,6,a,i,.05);}
   solid(0,0,2.2,1.3,2.2);
-  LIGHTS.push({x:0,y:3.4,z:0,r:18,c:[.3,1.3,1.6]});GLARE.push({x:0,y:3,z:0,s:2.2,c:[.2,.9,1]});
+  centre();
+  function centre(){
+    if(MP.peri===1){SB(0,.65,0,2.2,1.3,2.2,[.4,.4,.42],0,3,0,1,.08);SC(0,8,0,.45,14,gm,0,8);SB(0,15,0,3,.3,3,gm,0,8,.78,0,.05);
+      for(let i=0;i<4;i++){const a=i*HPI;SB(Math.cos(a)*1.3,14.7,Math.sin(a)*1.3,.8,.25,.8,[.9,.95,1],7,0,a,0,.02);}
+      LIGHTS.push({x:0,y:9,z:0,r:30,c:[1.5,1.8,2.3]});GLARE.push({x:0,y:14.6,z:0,s:4,c:[.7,.85,1]});}
+    else if(MP.peri===2){SC(0,2.4,0,2.3,4.8,[.34,.3,.2],0,2,0,0,4);SC(0,3.2,0,2.36,.5,[.3,1,.2],3,0);SC(0,4.9,0,1.4,.3,dk,0,8);
+      LIGHTS.push({x:0,y:3.4,z:0,r:18,c:[.5,1.7,.4]});GLARE.push({x:0,y:3.2,z:0,s:2.6,c:[.3,1,.2]});}
+    else{LIGHTS.push({x:0,y:3.4,z:0,r:18,c:[.3,1.3,1.6]});GLARE.push({x:0,y:3,z:0,s:2.2,c:[.2,.9,1]});}
+  }
+  function harborSide(s,sg){
+    const ax=s<2;
+    if(s===2){
+      SB(0,.6,46.7,96,1.2,1.2,[.4,.4,.42],0,3,0,1,.1);
+      SB(0,5.5,59,98,15,16,[.07,.08,.11],0,4,0,7,.4);SB(0,1.4,50.95,98,2.2,.1,[.5,.08,.06],0,0,0,0,0);
+      SB(-28,20,60,18,14,11,[.78,.8,.82],0,7,0,3,.2);SC(-28,30,61,4.5,7,[.7,.14,.1],0,2);SC(-28,34,61,4.7,.8,dk,0,8);
+      for(let i=0;i<9;i++){const lv=1+((R()*3)|0);for(let l=0;l<lv;l++)SB(-10+i*6.6,14.4+l*2.6,57+(i%2)*2.6,6,2.6,2.44,pal[(R()*6)|0],0,2,0,i+l,.05);}
+      SC(20,20,60,.3,14,dk,0,8);SS(20,27.2,60,.4,.4,.4,[1,.1,.05],7,0);SS(-28,35,61,.4,.4,.4,[1,.1,.05],7,0);
+      LIGHTS.push({x:-20,y:8,z:44,r:22,c:[1.2,1.6,2.2]});
+      return;
+    }
+    for(let i=0;i<16;i++){const a=-46.5+6.2*i;
+      for(let row=0;row<2;row++){const lv=2+row+((R()*2.4)|0),dpt=47.3+row*2.6;
+        for(let l=0;l<lv;l++){const c=pal[(R()*6)|0];
+          if(ax)SB(sg*dpt,1.3+l*2.6,a,2.44,2.6,6,c,0,2,0,i*7+l+row,.05);else SB(a,1.3+l*2.6,sg*dpt,6,2.6,2.44,c,0,2,0,i*7+l+row,.05);}}}
+    if(ax){
+      const cz=sg*14,col=[.8,.3,.07];
+      for(const dx of[-4,4])for(const dz of[-8,8])SB(sg*(57+dx),15.5,cz+dz,1.3,31,1.3,col,0,4,0,dx+dz,.08);
+      SB(sg*42,31.6,cz,46,2.4,3,col,0,4,0,2,.2);SB(sg*57,33.5,cz,9,1.6,17.3,col,0,4,0,3,.15);
+      SB(sg*33,29.4,cz,3.2,2.4,3.2,[.85,.86,.8],0,7,0,5,.1);SC(sg*29,23.5,cz,.16,14,dk,0,8);
+      SB(sg*29,15.2,cz,2.44,2.6,6,pal[(R()*6)|0],0,2,0,9,.05);
+      SS(sg*20,33.2,cz,.45,.45,.45,[1,.1,.05],7,0);SS(sg*57,34.8,cz,.45,.45,.45,[1,.1,.05],7,0);
+      GLARE.push({x:sg*33,y:28,z:cz,s:3,c:[.8,.9,1]});LIGHTS.push({x:sg*33,y:10,z:cz,r:24,c:[1.3,1.6,2.1]});
+    }
+  }
+  function factorySide(s,sg){
+    const ax=s<2,wc=[[.36,.27,.19],[.3,.25,.2],[.4,.3,.2]];
+    for(let i=0;i<8;i++){const a=-50+12.5*(i+.5),h=8+R()*3.5,c=wc[(R()*3)|0],sd=R()*50,wx=ax?sg*47.2:a,wz=ax?a:sg*47.2;
+      SB(wx,h/2,wz,ax?2.4:12.5,h,ax?12.5:2.4,c,0,2,0,sd,.04);SB(wx,h+.15,wz,ax?2.6:12.6,.3,ax?12.6:2.6,[1,1,1],0,5,0,0,.02);
+      const ox=ax?sg*56:a+(R()-.5)*3,oz=ax?a+(R()-.5)*3:sg*56,k=R();
+      if(k<.45){const d=8+R()*3,th=11+R()*8;SC(ox,th/2,oz,d,th,k<.2?[.3,.34,.3]:[.38,.24,.15],0,2,0,0,sd);SC(ox,th+.3,oz,d*.6,.6,dk,0,8);SC(ox,th*.6,oz,d+.15,.5,stl,0,8);}
+      else SB(ox,7,oz,12.5,14+R()*4,11,[.2,.19,.18],0,3,0,sd,.05);
+    }
+    const ca=(R()-.5)*50,cx=ax?sg*60:ca,cz=ax?ca:sg*60,hc=38+R()*12;
+    SC(cx,hc/2,cz,3.4,hc,[.42,.4,.38],0,3,0,0,s);for(const f of[.55,.78,.96])SC(cx,hc*f,cz,3.5,1.6,[.6,.12,.08],0,0);
+    SS(cx,hc+.6,cz,.5,.5,.5,[1,.1,.05],7,0);STACKS.push({x:cx,y:hc+1.5,z:cz});
+  }
   function pillar(x,z,h,col,lit){
     SB(x,h/2,z,1.3,h,1.3,[.34,.33,.35],0,3,0,x+z,.07);SB(x,.3,z,1.7,.6,1.7,[.28,.27,.29],0,3,0,x-z,.08);solid(x,z,1.3,h,1.3);
     for(const yy of[1.6,h*.5,h-1.2])SB(x,yy,z,1.4,.22,1.4,stl,0,4,0,yy,.03);
@@ -830,7 +885,7 @@ function buildWorld(){
     GLARE.push({x,y:h*.5,z,s:2.4,c:col});
     if(lit)LIGHTS.push({x,y:3.6,z,r:14,c:[col[0]*2,col[1]*2,col[2]*2]});
   }
-  for(const sx of[-1,1])for(const sz of[-1,1])pillar(sx*7.5,sz*7.5,7,sx*sz>0?neon[0]:neon[1],false);
+  if(MP.peri!==1)for(const sx of[-1,1])for(const sz of[-1,1])pillar(sx*7.5,sz*7.5,7,sx*sz>0?neon[0]:neon[1],false);
   // quadrant layout (mirrored 4x)
   const foot=[];
   function ok(x,z,hx,hz,pad){
@@ -841,11 +896,13 @@ function buildWorld(){
     return true;
   }
   const plan=MP.plan,items=[];
+  if(MP.rows)for(const x of[3.75,11.25,18.75,26.25,33.75,41.25])for(const z of[8,16,24,32,40]){
+    if(R()<.74&&ok(x,z,1.22,3,.5)){foot.push({x,z,hx:1.22,hz:3});items.push({t:'cont',x,z,o:false,c:pal[(R()*6)|0],c2:pal[(R()*6)|0],st:R()<.6,st3:R()<.3,v:.5,sd:R()*50});}}
   for(const t of plan){
     const o=R()<.5;let hx,hz;
     if(t==='cont'){hx=o?3:1.22;hz=o?1.22:3;}else if(t==='bar'||t==='sand'){hx=o?2.25:.36;hz=o?.36:2.25;}
     else if(t==='vent'){hx=hz=1.1;}else if(t==='crate'){hx=1.1;hz=.6;}else if(t==='pillar'){hx=hz=.85;}
-    else if(t==='drum'){hx=.7;hz=.7;}else if(t==='xbar'){hx=hz=.32;}else{hx=hz=.3;}
+    else if(t==='drum'){hx=.7;hz=.7;}else if(t==='tank'){hx=hz=2.3;}else if(t==='pipe'){hx=o?2.6:.5;hz=o?.5:2.6;}else if(t==='xbar'){hx=hz=.32;}else{hx=hz=.3;}
     for(let k=0;k<90;k++){const x=3+R()*40,z=3+R()*40;
       if(ok(x,z,hx,hz,t==='lamp'||t==='xbar'?1.6:2.7)){foot.push({x,z,hx,hz});
         items.push({t,x,z,o,c:pal[(R()*pal.length)|0],c2:pal[(R()*pal.length)|0],st:R()<.38,v:R(),sd:R()*50});break;}}
@@ -858,7 +915,7 @@ function buildWorld(){
         for(const k of[-.8,-.28,.28,.8]){if(o)SC(cx+3.04,y0+1.3,cz+k,.05,2.4,stl,0,8);else SC(cx+k,y0+1.3,cz+3.04,.05,2.4,stl,0,8);}
         for(const k of[-1,1]){if(o)SB(cx+3.03,y0+1.3,cz+k*.55,.05,.16,.5,stl,0,8,0,0,.01);else SB(cx+k*.55,y0+1.3,cz+3.03,.5,.16,.05,stl,0,8,0,0,.01);}};
       one(x,z,0,it.c,it.sd);
-      if(it.st){const off=(it.v-.5)*1.6;one(x+(o?off:0),z+(o?0:off),2.6,it.c2,it.sd+3);}
+      if(it.st){const off=(it.v-.5)*1.6;one(x+(o?off:0),z+(o?0:off),2.6,it.c2,it.sd+3);if(it.st3)one(x+(o?off:0),z+(o?0:off),5.2,it.c,it.sd+6);}
     }else if(it.t==='crate'){
       const cc=[.3,.22,.13],c2=[.25,.2,.12];
       SB(x-.55*sx,.5,z,1,1,1,cc,0,11,0,it.sd,.025);solid(x-.55*sx,z,1,1,1);
@@ -886,6 +943,15 @@ function buildWorld(){
       for(let k=0;k<3;k++){const a=k*2.1+it.v*6,px=x+Math.cos(a)*.37,pz=z+Math.sin(a)*.37,col=dc[(k+((it.sd)|0))%3];
         SC(px,.45,pz,.6,.9,col,0,2,0,0,it.sd+k);SC(px,.27,pz,.63,.035,dk,0,8);SC(px,.63,pz,.63,.035,dk,0,8);SC(px,.905,pz,.5,.02,dk,0,8);}
       solid(x,z,1.25,.92,1.25);
+    }else if(it.t==='tank'){
+      const tc=it.v<.5?[.3,.36,.28]:[.4,.26,.15];
+      SC(x,2.7,z,4.4,5.4,tc,0,2,0,0,it.sd);SC(x,5.5,z,3,.4,dk,0,8);SC(x,1.2,z,4.5,.25,stl,0,8);SC(x,3.9,z,4.5,.25,stl,0,8);
+      SB(x+2.25*sx,2.7,z,.12,5.4,.5,stl,0,8,0,0,.02);SC(x,5.9,z,.5,.5,[.3,1,.2],2.5,0);
+      solid(x,z,3.9,5.5,3.9);LIGHTS.push({x:x+2.6*sx,y:2.5,z,r:9,c:[.3,1.1,.25]});
+    }else if(it.t==='pipe'){
+      if(o)SC(x,.95,z,.8,5.2,rustc,0,2,0,HPI,it.sd);else SC(x,.95,z,.8,5.2,rustc,0,2,HPI,0,it.sd);
+      for(const k of[-2,0,2]){if(o){SB(x+k,.3,z,.3,.6,1,dk,0,8,0,0,.03);SC(x+k+.9,.95,z,.95,.12,stl,0,8,0,HPI);}else{SB(x,.3,z+k,1,.6,.3,dk,0,8,0,0,.03);SC(x,.95,z+k+.9,.95,.12,stl,0,8,HPI,0);}}
+      solid(x,z,o?5.2:.8,1.38,o?.8:5.2);
     }else if(it.t==='xbar'){
       barrels.push({x,z,hp:30,dead:false,fuse:0,c:solid(x,z,.62,1,.62)});
     }else{
@@ -1206,6 +1272,7 @@ function explode(x,y,z,rad,dmg,mine){
   if(dp<rad+.5){const k=clamp(1-dp/(rad+.5),0,1);hurtPlayer((mine?32:dmg)*k,x,z);}
 }
 function updSprites(dt){
+  stackT-=dt;if(stackT<=0){stackT=.3;for(const k of STACKS)fx(1,k.x+rnd(-.5,.5),k.y,k.z+rnd(-.5,.5),1.2+rnd(-.3,.3),rnd(2,3),rnd(-.3,.3),2.2,2.6,rnd(6,9),[.16,.15,.14],.55,.05,0);}
   for(let i=fxs.length-1;i>=0;i--){const p=fxs[i];p.life-=dt;if(p.life<=0){fxs.splice(i,1);continue;}
     const dr=Math.exp(-p.drag*dt);p.vx*=dr;p.vy*=dr;p.vz*=dr;p.vy-=p.g*dt;
     p.x+=p.vx*dt;p.y+=p.vy*dt;p.z+=p.vz*dt;p.s+=p.gr*dt;p.rot+=p.sp*dt;if(p.t===1)p.gr*=Math.exp(-dt*1.2);}
@@ -1857,7 +1924,7 @@ function buildDynamic(){
     cy(0,.5,0,0,0,0,.62,1,C.xb,0,0);cy(0,.3,0,0,0,0,.65,.04,C.gun,0,8);cy(0,.72,0,0,0,0,.65,.04,C.gun,0,8);cy(0,1.005,0,0,0,0,.5,.02,C.gun,0,8);
     bx(0,.51,.3,0,0,0,.24,.2,.03,C.yel,.5,5,.005);cy(.16,1.03,.1,0,0,0,.08,.04,C.gun2,0,8);}
   FL=0;
-  const by=3.0+Math.sin(G.t*1.3)*.12;
+  const by=MAPS[CURMAP].by+Math.sin(G.t*1.3)*.12;
   m4trs(BASE,0,by,0,G.t*.7,G.t*.9,0,1,1,1);
   for(const s of[-1,1]){bx(0,0,s*.5,0,0,0,1.08,.05,.08,C.gun2,0,8,.01);bx(s*.5,0,0,0,0,0,.08,.05,1,C.gun2,0,8,.01);}
   m4trs(BASE,0,by,0,-G.t*.5,G.t*.4,1.2,1,1,1);
@@ -1954,7 +2021,7 @@ function updEnv(dt){
   ENV.wet+=(wetT-ENV.wet)*(1-Math.exp(-dt*.14));
   const t=ENV.day,az=Math.atan2(SUN0[0],SUN0[2]);
   if(t>.34){
-    const u=clamp((t-.34)/.66,0,1),el=lerp(-.02,.37,u);
+    const u=clamp((t-.34)/.66,0,1),el=lerp(-.02,MAPS[CURMAP].el||.37,u);
     SUN[0]=Math.sin(az)*Math.cos(el);SUN[1]=Math.sin(el);SUN[2]=Math.cos(az)*Math.cos(el);
     ENV.str=clamp((t-.36)/.2,0,1);const k=ENV.str*(1-.6*ENV.wet);
     ENV.sunC[0]=lerp(7,11,u)*k;ENV.sunC[1]=lerp(2.5,5.5,u)*k;ENV.sunC[2]=lerp(.85,2.42,u)*k;
@@ -1965,6 +2032,7 @@ function updEnv(dt){
     ENV.sunC[0]=.6*k;ENV.sunC[1]=.8*k;ENV.sunC[2]=1.35*k;
     ENV.grc[0]=.16;ENV.grc[1]=.22;ENV.grc[2]=.4;
   }
+  {const st=MAPS[CURMAP].sunT;ENV.sunC[0]*=st[0];ENV.sunC[1]*=st[1];ENV.sunC[2]*=st[2];}
   updLight();
   ENV.exp=lerp(1.35,1,clamp(t*1.7,0,1));
   ENV.fl+=((t<.42&&G.state!=='menu'?1:0)-ENV.fl)*Math.min(1,dt*2);
@@ -2017,7 +2085,7 @@ function sceneUniforms(vp,cx,cy,cz,clip,refl,w,h){
   gl.uniform3f(pScene.u('uCam'),cx,cy,cz);gl.uniform3fv(pScene.u('uSun'),SUN);
   gl.uniform1f(pScene.u('uTime'),G.t);gl.uniform1f(pScene.u('uClip'),clip);gl.uniform1f(pScene.u('uUseRefl'),refl?1:0);
   gl.uniform2f(pScene.u('uInv'),1/w,1/h);
-  gl.uniform4f(pScene.u('uEnv'),ENV.day,ENV.wet,ENV.flash,ENV.str);gl.uniform3fv(pScene.u('uSunC'),ENV.sunC);
+  gl.uniform4f(pScene.u('uEnv'),ENV.day,ENV.wet,ENV.flash,ENV.str);gl.uniform4fv(pScene.u('uSkyT'),MAPS[CURMAP].sky);gl.uniform3fv(pScene.u('uSunC'),ENV.sunC);
   gl.uniform1i(pScene.u('uNL'),QL[SET.q].lt);gl.uniform1i(pScene.u('uST'),QL[SET.q].st);
   gl.uniform4f(pScene.u('uSpot'),SPT[0],SPT[1],SPT[2],ENV.fl*(G.state==='play'||G.state==='pause'?3:0));gl.uniform3f(pScene.u('uSpotDir'),CAM.fx,CAM.fy,CAM.fz);
   gl.uniform4fv(pScene.u('uLP'),LP);gl.uniform3fv(pScene.u('uLC'),LC);
@@ -2028,7 +2096,7 @@ function drawSky(th,asp,flip){
   gl.disable(gl.DEPTH_TEST);gl.depthMask(false);
   gl.useProgram(pSky.p);gl.bindVertexArray(emptyVAO);
   gl.uniform3f(pSky.u('uR'),CAM.rx,CAM.ry,CAM.rz);gl.uniform3f(pSky.u('uU'),CAM.ux,CAM.uy,CAM.uz);gl.uniform3f(pSky.u('uF'),CAM.fx,CAM.fy,CAM.fz);
-  gl.uniform2f(pSky.u('uTan'),th*asp,th);gl.uniform1f(pSky.u('uTime'),G.t);gl.uniform1f(pSky.u('uFlip'),flip);gl.uniform3fv(pSky.u('uSun'),SUN);gl.uniform4f(pSky.u('uEnv'),ENV.day,ENV.wet,ENV.flash,ENV.str);
+  gl.uniform2f(pSky.u('uTan'),th*asp,th);gl.uniform1f(pSky.u('uTime'),G.t);gl.uniform1f(pSky.u('uFlip'),flip);gl.uniform3fv(pSky.u('uSun'),SUN);gl.uniform4f(pSky.u('uEnv'),ENV.day,ENV.wet,ENV.flash,ENV.str);gl.uniform4fv(pSky.u('uSkyT'),MAPS[CURMAP].sky);
   gl.drawArrays(gl.TRIANGLES,0,3);
   gl.enable(gl.DEPTH_TEST);gl.depthMask(true);
 }
@@ -2106,7 +2174,7 @@ function render(){
   gl.uniform1i(pComp.u('uAO'),4);gl.uniform1i(pComp.u('uGR'),5);
   gl.uniform1f(pComp.u('uDmg'),G.state==='menu'?0:G.dmgFx+(P.hp<30?.25+.12*Math.sin(G.t*6):0));
   gl.uniform1f(pComp.u('uHp'),G.state==='menu'?1:G.state==='dead'?0:clamp(P.hp/45,0,1));
-  gl.uniform1f(pComp.u('uHeal'),G.healFx);gl.uniform1f(pComp.u('uBT'),G.btFx);gl.uniform1f(pComp.u('uShd'),G.shFx);gl.uniform1f(pComp.u('uExp'),ENV.exp);gl.uniform3fv(pComp.u('uTint'),MAPS[CURMAP].tint);
+  gl.uniform1f(pComp.u('uHeal'),G.healFx);gl.uniform1f(pComp.u('uBT'),G.btFx);gl.uniform1f(pComp.u('uShd'),G.shFx);gl.uniform1f(pComp.u('uExp'),ENV.exp*(MAPS[CURMAP].ex||1));gl.uniform3fv(pComp.u('uTint'),MAPS[CURMAP].tint);
   pass(RT.ldr);
   // FXAA + grain + vignette to screen
   gl.useProgram(pFxaa.p);tex(0,RT.ldr.tex);gl.uniform1i(pFxaa.u('uT'),0);gl.uniform2f(pFxaa.u('uPx'),1/w,1/h);
