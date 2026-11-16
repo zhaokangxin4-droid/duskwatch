@@ -156,6 +156,15 @@ body.touch #slots{justify-content:center}
   #cards .card{width:150px;padding:10px 8px}#cards .card h3{font-size:15px}#cards .card p{font-size:11px}#cards .ct{font-size:14px;margin-bottom:8px}
   #dnum b{font-size:14px}#dnum b.c{font-size:18px}
 }
+.modes{margin-top:18px;display:flex;flex-direction:column;gap:8px;align-items:center}
+.mrow{display:flex;gap:8px;align-items:center;font-size:13px}
+.mrow span{opacity:.6;letter-spacing:.3em;margin-right:4px}
+.mrow b{font-weight:600;padding:6px 14px;border:1px solid rgba(255,255,255,.22);background:rgba(10,14,22,.6);cursor:pointer;letter-spacing:.1em;transition:all .12s}
+.mrow b:hover{border-color:#5ff}
+.mrow b.on{border-color:#ffb35c;color:#0a0d14;background:linear-gradient(180deg,#ffd08a,#ff8a3c)}
+.mrow label{margin-left:8px;cursor:pointer;color:#7fe9ff}.mrow label.off{opacity:.3;pointer-events:none}
+#mDesc{font-size:12px;opacity:.7;letter-spacing:.08em;min-height:16px}
+@media (max-height:560px){.modes{margin-top:6px;gap:4px}.mrow{font-size:11px}.mrow b{padding:3px 8px}#mDesc{display:none}}
 </style>
 </head>
 <body>
@@ -189,6 +198,11 @@ body.touch #slots{justify-content:center}
   <h1>暮色哨站</h1>
   <h2>DUSKWATCH</h2>
   <p class="tag">失控的机械正从城市深处涌上天台。你是最后一名哨兵 —— 守到天黑。</p>
+  <div class="modes">
+    <div class="mrow" id="mMode"><span>模式</span><b data-m="0">无尽生存</b><b data-m="1">限时三分钟</b><b data-m="2">首领连战</b><b data-m="3">无限火力</b></div>
+    <div class="mrow" id="mDiff"><span>难度</span><b data-d="0">菜鸟</b><b data-d="1">标准</b><b data-d="2">噩梦</b><label id="lockL"><input type="checkbox" id="lockC"> 自动锁头</label></div>
+    <div id="mDesc"></div>
+  </div>
   <button class="btn" id="bStart">开始作战</button>
   <div class="panel">
     <label>画质</label><select data-k="q"><option value="0">低</option><option value="1">中</option><option value="2">高</option><option value="3">极致</option></select><span></span>
@@ -217,8 +231,8 @@ body.touch #slots{justify-content:center}
 </div>
 
 <div id="over" class="ovl hide">
-  <h1 style="font-size:60px">哨站失守</h1>
-  <h2>SIGNAL LOST</h2>
+  <h1 style="font-size:60px" id="oT">哨站失守</h1>
+  <h2 id="oS">SIGNAL LOST</h2>
   <div class="stats">
     <div><b id="oScore">0</b><span>得分</span></div>
     <div><b id="oWave">0</b><span>波次</span></div>
@@ -270,10 +284,13 @@ function m4look(o,ex,ey,ez,fx,fy,fz,ux,uy,uz){
 }
 
 // ───────────────────────── settings ─────────────────────────
-const SET={q:3,sens:1,vol:.7,fov:85};
+const SET={q:3,sens:1,vol:.7,fov:85,mode:0,diff:1,lock:1};
 try{Object.assign(SET,JSON.parse(localStorage.getItem('duskwatch.set2')||'{}'));}catch(e){}
 const saveSet=()=>{try{localStorage.setItem('duskwatch.set2',JSON.stringify(SET));}catch(e){}};
-let BEST=0;try{BEST=+localStorage.getItem('duskwatch.best')||0;}catch(e){}
+let BEST=0;const bestKey=()=>'duskwatch.best'+(SET.mode||SET.diff!==1?'.'+SET.mode+SET.diff:'');
+function loadBest(){try{BEST=+localStorage.getItem(bestKey())||0;}catch(e){BEST=0;}}
+SET.mode=Math.min(3,Math.max(0,SET.mode|0));SET.diff=SET.diff===0?0:SET.diff===2?2:1;loadBest();
+const DF=[{hp:.75,dmg:.5,bud:.8},{hp:1,dmg:1,bud:1},{hp:1.35,dmg:1.5,bud:1.3}];
 const QL=[{sh:1024,ao:0,gr:0,rf:0,lt:6,st:4},{sh:2048,ao:1,gr:1,rf:0,lt:10,st:8},{sh:4096,ao:1,gr:1,rf:1,lt:14,st:8},{sh:4096,ao:1,gr:1,rf:2,lt:14,st:8}];
 
 // ───────────────────────── shaders ─────────────────────────
@@ -1044,7 +1061,7 @@ function music(){
 
 // ───────────────────────── game state ─────────────────────────
 const G={state:'menu',t:0,score:0,kills:0,shots:0,hits:0,combo:0,comboT:0,shake:0,dmgFx:0,healFx:0,fade:0,
-  noLock:/nolock/.test(location.search),locked:false,everLocked:false,flowT:0,bt:0,btFx:0,shFx:0,slowT:0,perks:0,bossOn:false,
+  noLock:/nolock/.test(location.search),locked:false,everLocked:false,flowT:0,mode:0,diff:1,lock:false,timeLeft:0,bt:0,btFx:0,shFx:0,slowT:0,perks:0,bossOn:false,
   touch:/[?&]touch/.test(location.search)||!!(window.matchMedia&&matchMedia('(pointer:coarse)').matches)};
 if(G.touch){G.noLock=true;document.body.classList.add('touch');}
 const P={x:0,y:0,z:-13,vx:0,vy:0,vz:0,yaw:0,pitch:0,hp:100,ground:true,w:0,cd:0,reload:0,sw:0,kick:0,vmKick:0,flashT:0,
@@ -1190,7 +1207,7 @@ function tryFire(){
   if(P.cd>0||P.reload>0||P.sw>.1)return;
   if(s.mag<=0){if(s.res>0)startReload();else{SFX.empty();P.cd=.3;}return;}
   eyeBasis();
-  s.mag--;P.cd=w.rate/P.rateM;G.shots++;P.kick+=w.recoil;P.pitch+=w.recoil*.25;P.vmKick=1;P.flashT=.055;
+  if(G.mode!==3)s.mag--;P.cd=w.rate/P.rateM;G.shots++;P.kick+=w.recoil;P.pitch+=w.recoil*.25;P.vmKick=1;P.flashT=.055;
   const ex=P.x,ey=P.y+P.eyeH,ez=P.z,ad=P.ads;
   const mx=ex+CAM.rx*.2*(1-ad)-CAM.ux*.16+CAM.fx*.7,my=ey+CAM.ry*.2*(1-ad)-CAM.uy*.16+CAM.fy*.7,mz=ez+CAM.rz*.2*(1-ad)-CAM.uz*.16+CAM.fz*.7;
   light(mx,my,mz,10,[3.2,2.2,1.2],.06);if(w.kind!=='flame')muzzleFx(mx,my,mz);
@@ -1246,7 +1263,7 @@ function hurtPlayer(d,sx,sz){
 
 // ───────────────────────── enemies ─────────────────────────
 function spawnEnemy(type,x,z,boss){
-  const T=ET[type],hpM=1+WV.n*.05;
+  const T=ET[type],hpM=(1+WV.n*.05)*DF[G.diff].hp;
   const e={type,x,z,y:type==='drone'?rnd(6,8):0,vx:0,vz:0,yaw:Math.atan2(-x,-z),hp:T.hp*hpM*(boss?4:1),
     scale:boss?1.6:rnd(.94,1.06),boss:!!boss,spawn:0,flash:0,anim:Math.random()*10,cd:rnd(1,2.4),los:false,losT:Math.random()*.3,
     st:Math.random()<.5?1:-1,stT:rnd(1.5,3),orb:Math.random()*TAU,burst:0,bT:0,wind:0,lunge:0,charge:0,moving:0,dead:false,seed:Math.random()*100,orbT:rnd(3,6),aim:0,lx:x,ly:1,lz:z,prime:0,roll:0,slamT:rnd(4,6),ph2:false,hp0:1};
@@ -1262,7 +1279,7 @@ function hurtEnemy(e,dmg,crit,x,y,z,silent){
 function killEnemy(e,crit){
   if(e.dead)return;e.dead=true;const T=ET[e.type],cy=e.y+(e.type==='drone'?0:T.eye*.6*e.scale);
   G.kills++;G.combo++;G.comboT=4;
-  P.ult=Math.min(100,P.ult+(crit?11:8)*P.ultM*(e.boss?4:1));if(P.leech)P.hp=Math.min(100,P.hp+P.leech);
+  P.ult=Math.min(100,P.ult+(crit?11:8)*P.ultM*(e.boss?4:1)*(G.mode===3?2.5:1));if(P.leech)P.hp=Math.min(100,P.hp+P.leech);
   if(e.type==='bomber')boomQ.push({x:e.x,y:.5,z:e.z,r:4.2,d:90,t:.05});
   else if(P.boomCh&&Math.random()<P.boomCh)boomQ.push({x:e.x,y:cy,z:e.z,r:3.2,d:70,t:.06});
   if(G.state==='play'&&!WV.queue.length&&!enemies.some(o=>!o.dead))G.slowT=.8;
@@ -1289,7 +1306,7 @@ function fireBolt(ox,oy,oz,speed,dmg,col,lead){
 }
 function updEnemies(dt){
   G.flowT-=dt;if(G.flowT<=0){G.flowT=.25;flowField();}
-  const dmgM=1+WV.n*.035,alive=G.state==='play';
+  const dmgM=(1+WV.n*.035)*DF[G.diff].dmg,alive=G.state==='play';
   for(const e of enemies){
     const T=ET[e.type],s=e.scale;
     e.spawn=Math.min(1,e.spawn+dt*2.2);e.flash=Math.max(0,e.flash-dt*7);
@@ -1412,16 +1429,18 @@ function updPickups(dt){
   }
 }
 function updWave(dt){
+  if(G.mode===1){G.timeLeft-=dt;if(G.timeLeft<=0){G.timeLeft=0;die('时间到','TIME UP');return;}}
   if(WV.state==='rest'){
     if(CARDS.open){CARDS.t-=dt;if(CARDS.t<=0)pickCard((Math.random()*CARDS.list.length)|0);}else WV.timer-=dt;
     if(WV.timer<=0){
-      WV.n++;const n=WV.n,q=[];let budget=5+n*4.2;
-      if(n%5===0){q.push('boss');budget-=8;}
+      WV.n++;const n=WV.n,q=[];let budget=(5+n*4.2)*DF[G.diff].bud*(G.mode===3?1.5:1);
+      if(G.mode===2){q.push('boss');if(n>3)q.push('boss');budget=2+n*2;}
+      else if(n%5===0){q.push('boss');budget-=8;}
       while(budget>0){const r=Math.random();let t='crawler';
         if(n>=2&&r<.36)t='trooper';if(n>=3&&r<.17)t='drone';if(n>=3&&r>.80&&r<.90)t='bomber';if(n>=4&&r>.72&&r<.80)t='sniper';if(n>=4&&r>.94&&budget>=6)t='brute';
         q.push(t);budget-=t==='crawler'?1:t==='brute'?7:t==='sniper'?3:2;}
       for(let i=q.length-1;i>0;i--){const j=(Math.random()*(i+1))|0,t=q[i];q[i]=q[j];q[j]=t;}
-      WV.queue=q;WV.state='fight';spawnBarrels();WV.spT=1;announce('第 '+n+' 波',n%5===0?'警告 · 重型单位接近':'WAVE '+n);SFX.wave();hudDirty();
+      WV.queue=q;WV.state='fight';spawnBarrels();WV.spT=1;announce('第 '+n+' 波',(G.mode===2||n%5===0)?'警告 · 重型单位接近':'WAVE '+n);SFX.wave();hudDirty();
     }
   }else{
     WV.spT-=dt;
@@ -1432,13 +1451,14 @@ function updWave(dt){
       spawnEnemy(t==='boss'?'brute':t,g.sx+rnd(-1,1),g.sz+rnd(-1,1),t==='boss');hudDirty();
     }
     if(!WV.queue.length&&!enemies.length){
-      WV.state='rest';WV.timer=4;if(WV.n>0)showCards();P.hp=Math.min(100,P.hp+20);G.healFx=.7;
+      WV.state='rest';WV.timer=G.mode===1?2:4;if(WV.n>0)showCards();P.hp=Math.min(100,P.hp+20);G.healFx=.7;
       WS[1].res+=Math.round(4*P.ammoM);WS[2].res+=Math.round(24*P.ammoM);WS[3].res+=Math.round((WV.n%2===0?2:1)*P.ammoM);WS[4].res+=Math.round(1*P.ammoM);WS[5].res+=Math.round(30*P.ammoM);WS[6].res+=Math.round(6*P.ammoM);
       const bonus=WV.n*150;G.score+=bonus;announce('区域肃清','补给已送达　+'+bonus);SFX.clear();hudDirty();
     }
   }
 }
 function updPlayer(dt){
+  if(G.lock)lockAim(dt);
   const sy=Math.sin(P.yaw),cy=Math.cos(P.yaw);
   const mx=(K.KeyD?1:0)-(K.KeyA?1:0)+TC.jx,mz=(K.KeyW?1:0)-(K.KeyS?1:0)-TC.jy;
   let wx=sy*mz-cy*mx,wz=cy*mz+sy*mx;const wl=Math.hypot(wx,wz);if(wl>1){wx/=wl;wz/=wl;}
@@ -1460,7 +1480,7 @@ function updPlayer(dt){
   const hs=Math.hypot(P.vx,P.vz);
   if(P.ground&&hs>1){P.bob+=hs*dt*1.25;P.stepT-=hs*dt;if(P.stepT<=0){P.stepT=sprint?3.3:2.7;SFX.step();}}
   P.inv-=dt;P.dashCd-=dt;P.meleeCd-=dt;P.meleeT=Math.max(0,P.meleeT-dt);P.shT-=dt;
-  if(P.shT<=0&&P.sh<P.shMax){if(P.sh<=0)SFX.shup();P.sh=Math.min(P.shMax,P.sh+dt*14);}
+  if(P.shT<=0&&P.sh<P.shMax){if(P.sh<=0)SFX.shup();P.sh=Math.min(P.shMax,P.sh+dt*(G.diff===0?28:14));}
   if(P.hp<30){P.hbT-=dt;if(P.hbT<=0){P.hbT=.85;SFX.heart();}}
   P.cd-=dt;P.sw=Math.max(0,P.sw-dt);P.flashT-=dt;P.vmKick=Math.max(0,P.vmKick-dt*9);
   P.kick*=Math.exp(-dt*10);P.bloom=Math.max(0,P.bloom-dt*.07);
@@ -2213,6 +2233,8 @@ function setupTouch(){
 }
 if(G.touch)setupTouch();
 function hudFrame(){
+  if(G.mode===1){const tl=Math.ceil(G.timeLeft);if(tl!==HP_.tl2){HP_.tl2=tl;E.left.textContent='剩余时间 '+((tl/60)|0)+':'+String(tl%60).padStart(2,'0');E.left.style.color=tl<=20?'#ff5a4a':'';}}
+  else if(HP_.tl2!==-1){HP_.tl2=-1;E.left.style.color='';}
   const shw=Math.round(P.sh/P.shMax*100);if(shw!==HP_.sh){HP_.sh=shw;E.shbar.style.width=shw+'%';}
   const dc=Math.round(clamp(P.dashCd/(2.2*P.dashM),0,1)*100);
   if(dc!==HP_.dc){HP_.dc=dc;E.aDash.firstChild.style.height=dc+'%';E.aDash.classList.toggle('rdy',dc===0);}
@@ -2270,6 +2292,34 @@ function fireSpecial(w,ex,ey,ez,mx,my,mz){
   }
 }
 
+// rookie aim assist: pull the crosshair onto the nearest visible head inside a cone
+function lockAim(dt){
+  eyeBasis();const ex=P.x,ey=P.y+P.eyeH,ez=P.z;let best=null,bs=.1,bx=0,by=0,bz=0;
+  for(const e of enemies){
+    if(e.dead||e.spawn<.5)continue;const T=ET[e.type],cb=T.boxes[T.boxes.length-1];
+    const tx=e.x+e.vx*.04,ty=e.y+cb[0]*e.scale,tz=e.z+e.vz*.04,dx=tx-ex,dy=ty-ey,dz=tz-ez,d=Math.hypot(dx,dy,dz)||.01;
+    if(d>60)continue;
+    const sc=1-(dx*CAM.fx+dy*CAM.fy+dz*CAM.fz)/d+d*.0004;
+    if(sc<bs&&los(ex,ey,ez,tx,ty,tz)){bs=sc;best=e;bx=dx;by=dy;bz=dz;}
+  }
+  if(!best)return;
+  const k=1-Math.exp(-dt*16);
+  P.yaw=angLerp(P.yaw,Math.atan2(bx,bz),k);
+  P.pitch+=(clamp(Math.atan2(by,Math.hypot(bx,bz))-P.kick,-1.5,1.5)-P.pitch)*k;
+}
+const MDESC=['一波接一波，撑得越久分越高，每 5 波一个首领','只有 180 秒，敌人不间断，比谁分数高','每一波都是首领，后期一次来两个','弹匣永不减少，子弹时间充能飞快，敌人也更多'];
+function syncModes(){
+  document.querySelectorAll('#mMode b').forEach(b=>b.classList.toggle('on',+b.dataset.m===SET.mode));
+  document.querySelectorAll('#mDiff b').forEach(b=>b.classList.toggle('on',+b.dataset.d===SET.diff));
+  $('lockC').checked=!!SET.lock;$('lockL').classList.toggle('off',SET.diff!==0);
+  $('mDesc').textContent=MDESC[SET.mode]+(SET.diff===0?'　·　菜鸟：敌人更弱'+(SET.lock?'，准星自动吸附头部':''):SET.diff===2?'　·　噩梦：敌人更多更硬更疼':'');
+  loadBest();const el=$('best');if(el)el.textContent=BEST?'最高纪录　'+BEST.toLocaleString('en-US'):'';
+}
+$('mMode').addEventListener('click',e=>{const b=e.target.closest('b');if(b){SET.mode=+b.dataset.m;saveSet();syncModes();}});
+$('mDiff').addEventListener('click',e=>{const b=e.target.closest('b');if(b){SET.diff=+b.dataset.d;saveSet();syncModes();}});
+$('lockC').addEventListener('change',e=>{SET.lock=e.target.checked?1:0;saveSet();syncModes();});
+syncModes();
+
 // ───────────────────────── HUD ─────────────────────────
 const E={hud:$('hud'),menu:$('menu'),pause:$('pause'),over:$('over'),cross:$('cross'),hit:$('hit'),wave:$('wave'),left:$('left'),
   score:$('score'),combo:$('combo'),hpbox:$('hpbox'),hpnum:$('hpnum'),hpbar:$('hpbar'),wname:$('wname'),ammo:$('ammo'),mag:$('mag'),res:$('res'),
@@ -2291,7 +2341,7 @@ function updHud(){
   hudFrame();
   if(!dirty)return;dirty=false;
   E.wave.textContent=WV.n?'第 '+WV.n+' 波':'准备';
-  E.left.textContent=WV.state==='fight'?'剩余敌人 '+(enemies.length+WV.queue.length):'下一波即将到来';
+  if(G.mode!==1)E.left.textContent=WV.state==='fight'?'剩余敌人 '+(enemies.length+WV.queue.length):'下一波即将到来';
   E.score.textContent=G.score.toLocaleString('en-US');E.perks.textContent=G.perks?'强化 ×'+G.perks:'';
   E.combo.textContent=G.combo>1?'连杀 ×'+(1+Math.min(G.combo-1,12)*.25).toFixed(2):'';
   const hp=Math.ceil(P.hp);E.hpnum.textContent=hp;E.hpbar.style.width=hp+'%';E.hpbox.classList.toggle('low',hp<=30);
@@ -2315,7 +2365,8 @@ function drawRadar(){
 function show(el,v){el.classList.toggle('hide',!v);}
 function lock(){if(G.noLock)return;try{const p=canvas.requestPointerLock();if(p&&p.catch)p.catch(()=>{});}catch(e){}}
 function startGame(){
-  initAudio();resetGame();G.state='play';G.fade=0;show(E.menu,false);show(E.over,false);show(E.pause,false);show(E.hud,true);lock();
+  initAudio();resetGame();G.state='play';G.fade=0;G.mode=SET.mode;G.diff=SET.diff;G.lock=SET.diff===0&&!!SET.lock;G.timeLeft=180;
+  if(G.mode===1){WV.timer=1.5;}show(E.menu,false);show(E.over,false);show(E.pause,false);show(E.hud,true);lock();
   if(G.touch){try{const el=document.documentElement,r=el.requestFullscreen&&el.requestFullscreen();if(r&&r.then)r.then(()=>{try{screen.orientation.lock('landscape').catch(()=>{});}catch(e){}}).catch(()=>{});}catch(e){}}
   setTimeout(()=>{if(G.state==='play'&&WV.n<=1)feed(G.touch?'准星对准敌人会自动开火':'<b>E</b> 冲刺　<b>F</b> 近战　<b>Q</b> 子弹时间');},1600);
 }
@@ -2324,9 +2375,10 @@ function resume(){if(G.state!=='pause')return;G.state='play';show(E.pause,false)
 function toMenu(){G.state='menu';show(E.pause,false);show(E.over,false);show(E.hud,false);show(E.menu,true);
   enemies.length=shots.length=pickups.length=0;slams.length=0;boomQ.length=0;hideCards();E.best.textContent=BEST?'最高纪录　'+BEST.toLocaleString('en-US'):'';
   if(document.pointerLockElement)document.exitPointerLock();}
-function die(){
+function die(t1,t2){
+  $('oT').textContent=t1||'哨站失守';$('oS').textContent=t2||'SIGNAL LOST';
   G.state='dead';SFX.over();M.l=M.r=false;hideCards();G.bt=0;
-  const nb=G.score>BEST;if(nb){BEST=G.score;try{localStorage.setItem('duskwatch.best',BEST);}catch(e){}}
+  const nb=G.score>BEST;if(nb){BEST=G.score;try{localStorage.setItem(bestKey(),BEST);}catch(e){}}
   setTimeout(()=>{if(G.state!=='dead')return;
     $('oScore').textContent=G.score.toLocaleString('en-US');$('oWave').textContent=WV.n;$('oKills').textContent=G.kills;
     $('oAcc').textContent=(G.shots?Math.round(G.hits/G.shots*100):0)+'%';
