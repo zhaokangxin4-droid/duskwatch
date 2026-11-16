@@ -164,6 +164,11 @@ body.touch #slots{justify-content:center}
 .mrow b:hover{border-color:#5ff}
 .mrow b.on{border-color:#ffb35c;color:#0a0d14;background:linear-gradient(180deg,#ffd08a,#ff8a3c)}
 .mrow label{margin-left:8px;cursor:pointer;color:#7fe9ff}.mrow label.off{opacity:.3;pointer-events:none}
+#mLoad{flex-wrap:wrap;justify-content:center;max-width:680px}
+#mLoad b{padding:5px 10px}
+#mLoad b i{font-style:normal;opacity:.55;font-size:10px;margin-left:4px}
+#menu{overflow-y:auto;justify-content:safe center;padding:16px 0}
+#mLoadN{font-size:12px;color:#7fe9ff;letter-spacing:.1em}
 #mDesc{font-size:12px;opacity:.7;letter-spacing:.08em;min-height:16px}
 @media (max-height:560px){.modes{margin-top:6px;gap:4px}.mrow{font-size:11px}.mrow b{padding:3px 8px}#mDesc{display:none}}
 </style>
@@ -202,6 +207,8 @@ body.touch #slots{justify-content:center}
   <div class="modes">
     <div class="mrow" id="mMode"><span>模式</span><b data-m="0">无尽生存</b><b data-m="1">限时三分钟</b><b data-m="2">首领连战</b><b data-m="3">无限火力</b></div>
     <div class="mrow" id="mDiff"><span>难度</span><b data-d="0">菜鸟</b><b data-d="1">标准</b><b data-d="2">噩梦</b><label id="lockL"><input type="checkbox" id="lockC"> 自动锁头</label></div>
+    <div class="mrow" id="mLoad"><span>武器</span></div>
+    <div id="mLoadN"></div>
     <div id="mDesc"></div>
   </div>
   <button class="btn" id="bStart">开始作战</button>
@@ -213,7 +220,7 @@ body.touch #slots{justify-content:center}
   </div>
   <div class="keys">
     <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> 移动　<kbd>Shift</kbd> 奔跑　<kbd>空格</kbd> 跳跃　<kbd>鼠标左键</kbd> 射击　<kbd>右键</kbd> 瞄准<br>
-    <kbd>E</kbd> 冲刺闪避　<kbd>F</kbd> 近战　<kbd>Q</kbd> 子弹时间　<kbd>1</kbd>–<kbd>0</kbd> <kbd>-</kbd> / <kbd>滚轮</kbd> 切武器　<kbd>R</kbd> 换弹　<kbd>Esc</kbd> 暂停
+    <kbd>E</kbd> 冲刺闪避　<kbd>F</kbd> 近战　<kbd>Q</kbd> 子弹时间　<kbd>1</kbd>–<kbd>5</kbd> / <kbd>滚轮</kbd> 切武器　<kbd>R</kbd> 换弹　<kbd>Esc</kbd> 暂停
   </div>
   <div class="tkeys">左侧摇杆移动 · 右侧滑动瞄准 · 准星对准敌人自动开火<br>请横屏游玩</div>
   <div id="best"></div>
@@ -285,7 +292,7 @@ function m4look(o,ex,ey,ez,fx,fy,fz,ux,uy,uz){
 }
 
 // ───────────────────────── settings ─────────────────────────
-const SET={q:3,sens:1,vol:.7,fov:85,mode:0,diff:1,lock:1};
+const SET={q:3,sens:1,vol:.7,fov:85,mode:0,diff:1,lock:1,load:[0,1,2,3]};
 try{Object.assign(SET,JSON.parse(localStorage.getItem('duskwatch.set2')||'{}'));}catch(e){}
 const saveSet=()=>{try{localStorage.setItem('duskwatch.set2',JSON.stringify(SET));}catch(e){}};
 let BEST=0;const bestKey=()=>'duskwatch.best'+(SET.mode||SET.diff!==1?'.'+SET.mode+SET.diff:'');
@@ -1062,7 +1069,7 @@ function music(){
 
 // ───────────────────────── game state ─────────────────────────
 const G={state:'menu',t:0,score:0,kills:0,shots:0,hits:0,combo:0,comboT:0,shake:0,dmgFx:0,healFx:0,fade:0,
-  noLock:/nolock/.test(location.search),locked:false,everLocked:false,flowT:0,mode:0,diff:1,lock:false,timeLeft:0,bt:0,btFx:0,shFx:0,slowT:0,perks:0,bossOn:false,
+  noLock:/nolock/.test(location.search),locked:false,everLocked:false,flowT:0,load:[0,1,2,3],mode:0,diff:1,lock:false,timeLeft:0,bt:0,btFx:0,shFx:0,slowT:0,perks:0,bossOn:false,
   touch:/[?&]touch/.test(location.search)||!!(window.matchMedia&&matchMedia('(pointer:coarse)').matches)};
 if(G.touch){G.noLock=true;document.body.classList.add('touch');}
 const P={x:0,y:0,z:-13,vx:0,vy:0,vz:0,yaw:0,pitch:0,hp:100,ground:true,w:0,cd:0,reload:0,sw:0,kick:0,vmKick:0,flashT:0,
@@ -1199,7 +1206,7 @@ function collideP(axis,d){
       else if(d<=0){P.y=c.y1;P.vy=0;P.ground=true;}else{P.y=c.y0-h;P.vy=0;}
     }}
 }
-function switchW(i){if(i===P.w||i<0||i>=WP.length)return;P.last=P.w;P.w=i;P.sw=.28;P.reload=0;P.cd=Math.min(Math.max(P.cd,.2),.4);SFX.sw();hudDirty();}
+function switchW(i){if(i===P.w||i===undefined||G.load.indexOf(i)<0)return;P.last=P.w;P.w=i;P.sw=.28;P.reload=0;P.cd=Math.min(Math.max(P.cd,.2),.4);SFX.sw();hudDirty();}
 function startReload(){const w=WP[P.w],s=WS[P.w];if(P.reload>0||s.mag>=magOf(P.w)||s.res<=0)return;P.reload=P.rlMax=w.reload/P.reloadM;SFX.reload();}
 function eyeBasis(){
   const pt=clamp(P.pitch+P.kick,-1.5,1.5),cp=Math.cos(pt);
@@ -2222,7 +2229,7 @@ function setupTouch(){
     if(b==='fire'){M.l=on;if(on)M.fired=false;return;}
     if(!on)return;
     if(b==='jump')P.jumpQ=true;else if(b==='dash')doDash();else if(b==='melee')doMelee();else if(b==='ult')doUlt();
-    else if(b==='reload')startReload();else if(b==='swap')switchW((P.w+1)%WP.length);else if(b==='pause')pause();
+    else if(b==='reload')startReload();else if(b==='swap')switchW(G.load[(G.load.indexOf(P.w)+1)%G.load.length]);else if(b==='pause')pause();
   };
   L.addEventListener('touchstart',e=>{
     e.preventDefault();initAudio();
@@ -2372,6 +2379,17 @@ function syncModes(){
 $('mMode').addEventListener('click',e=>{const b=e.target.closest('b');if(b){SET.mode=+b.dataset.m;saveSet();syncModes();}});
 $('mDiff').addEventListener('click',e=>{const b=e.target.closest('b');if(b){SET.diff=+b.dataset.d;saveSet();syncModes();}});
 $('lockC').addEventListener('change',e=>{SET.lock=e.target.checked?1:0;saveSet();syncModes();});
+const LMAX=5;
+SET.load=(Array.isArray(SET.load)?SET.load:[0,1,2,3]).filter((v,i,a)=>Number.isInteger(v)&&v>=0&&v<WP.length&&a.indexOf(v)===i).slice(0,LMAX);if(!SET.load.length)SET.load=[0,1,2,3];
+WP.forEach((w,i)=>{const b=document.createElement('b');b.dataset.w=i;b.innerHTML=w.name+(w.melee?'<i>近战</i>':'');$('mLoad').appendChild(b);});
+function syncLoad(){
+  document.querySelectorAll('#mLoad b').forEach(b=>{const k=SET.load.indexOf(+b.dataset.w);b.classList.toggle('on',k>=0);});
+  $('mLoadN').textContent='已选 '+SET.load.length+' / '+LMAX+'　按键顺序：'+SET.load.map((w,k)=>(k+1)+' '+WP[w].s).join('　');
+}
+$('mLoad').addEventListener('click',e=>{const b=e.target.closest('b');if(!b)return;const w=+b.dataset.w,k=SET.load.indexOf(w);
+  if(k>=0){if(SET.load.length>1)SET.load.splice(k,1);}else if(SET.load.length<LMAX)SET.load.push(w);else{SET.load.shift();SET.load.push(w);}
+  saveSet();syncLoad();});
+syncLoad();
 syncModes();
 
 // ───────────────────────── HUD ─────────────────────────
@@ -2379,7 +2397,8 @@ const E={hud:$('hud'),menu:$('menu'),pause:$('pause'),over:$('over'),cross:$('cr
   score:$('score'),combo:$('combo'),hpbox:$('hpbox'),hpnum:$('hpnum'),hpbar:$('hpbar'),wname:$('wname'),ammo:$('ammo'),mag:$('mag'),res:$('res'),
   slots:$('slots'),ann:$('ann'),feed:$('feed'),hint:$('hint'),rld:$('rld'),fps:$('fps'),best:$('best'),dnum:$('dnum'),shbar:$('shbar'),boss:$('boss'),bossbar:$('bossbar'),aDash:$('aDash'),aMelee:$('aMelee'),aUlt:$('aUlt'),perks:$('perks'),btfx:$('btfx'),touch:$('touch')};
 const RC=$('radar').getContext('2d'),arcs=[...document.querySelectorAll('#dmgdir .arc')];let arcI=0,dirty=true,gapPrev=-1;
-WP.forEach((w,i)=>{const d=document.createElement('div');d.textContent=(i<9?i+1:i===9?'0':'-')+' '+w.s;E.slots.appendChild(d);});
+function buildSlots(){E.slots.innerHTML='';G.load.forEach((wi,k)=>{const d=document.createElement('div');d.textContent=(k+1)+' '+WP[wi].s;d.dataset.w=wi;E.slots.appendChild(d);});}
+buildSlots();
 function hudDirty(){dirty=true;}
 function retrig(el,cls){el.className=el.className.replace(/\bon\b/g,'').trim();void el.offsetWidth;el.className=(cls?cls+' ':'')+'on';}
 function hitMark(k){retrig(E.hit,k);}
@@ -2400,7 +2419,7 @@ function updHud(){
   E.combo.textContent=G.combo>1?'连杀 ×'+(1+Math.min(G.combo-1,12)*.25).toFixed(2):'';
   const hp=Math.ceil(P.hp);E.hpnum.textContent=hp;E.hpbar.style.width=hp+'%';E.hpbox.classList.toggle('low',hp<=30);
   E.wname.textContent=w.name;E.mag.textContent=w.melee?'∞':s.mag;E.res.textContent='/ '+(s.res===Infinity?'∞':s.res);E.ammo.classList.toggle('empty',s.mag===0);
-  [...E.slots.children].forEach((d,i)=>{d.className=(i===P.w?'on ':'')+(WS[i].mag+WS[i].res<=0?'out':'');});
+  [...E.slots.children].forEach(d=>{const i=+d.dataset.w;d.className=(i===P.w?'on ':'')+(WS[i].mag+WS[i].res<=0?'out':'');});
 }
 function drawRadar(){
   const c=RC,h=75;c.clearRect(0,0,150,150);
@@ -2419,7 +2438,7 @@ function drawRadar(){
 function show(el,v){el.classList.toggle('hide',!v);}
 function lock(){if(G.noLock)return;try{const p=canvas.requestPointerLock();if(p&&p.catch)p.catch(()=>{});}catch(e){}}
 function startGame(){
-  initAudio();resetGame();G.state='play';G.fade=0;G.mode=SET.mode;G.diff=SET.diff;G.lock=SET.diff===0&&!!SET.lock;G.timeLeft=180;
+  initAudio();resetGame();G.state='play';G.fade=0;G.mode=SET.mode;G.diff=SET.diff;G.lock=SET.diff===0&&!!SET.lock;G.timeLeft=180;G.load=SET.load.slice();P.w=G.load[0];P.last=G.load[1]===undefined?G.load[0]:G.load[1];buildSlots();hudDirty();
   if(G.mode===1){WV.timer=1.5;}show(E.menu,false);show(E.over,false);show(E.pause,false);show(E.hud,true);lock();
   if(G.touch){try{const el=document.documentElement,r=el.requestFullscreen&&el.requestFullscreen();if(r&&r.then)r.then(()=>{try{screen.orientation.lock('landscape').catch(()=>{});}catch(e){}}).catch(()=>{});}catch(e){}}
   setTimeout(()=>{if(G.state==='play'&&WV.n<=1)feed(G.touch?'准星对准敌人会自动开火':'<b>E</b> 冲刺　<b>F</b> 近战　<b>Q</b> 子弹时间');},1600);
@@ -2449,7 +2468,7 @@ window.addEventListener('keydown',e=>{
   if(e.repeat)return;K[e.code]=true;
   if(G.state==='play'){
     const dk=e.code==='Digit0'?9:e.code==='Minus'?10:(e.code>='Digit1'&&e.code<='Digit9')?+e.code[5]-1:-1;
-    if(dk>=0){if(CARDS.open&&dk<3)pickCard(dk);else switchW(dk);}
+    if(dk>=0){if(CARDS.open&&dk<3)pickCard(dk);else switchW(G.load[dk]);}
     else if(e.code==='KeyR')startReload();
     else if(e.code==='KeyQ')doUlt();else if(e.code==='KeyE')doDash();else if(e.code==='KeyF')doMelee();else if(e.code==='Space')P.jumpQ=true;
     else if((e.code==='Escape'||e.code==='KeyP')&&(G.noLock||!G.locked))pause();
@@ -2469,7 +2488,7 @@ window.addEventListener('mousemove',e=>{
   P.yaw-=mx*k;P.pitch=clamp(P.pitch-my*k,-1.5,1.5);
   P.swayX=clamp(P.swayX-mx*.00012,-.03,.03);P.swayY=clamp(P.swayY+my*.00012,-.03,.03);
 });
-window.addEventListener('wheel',e=>{if(G.state==='play')switchW((P.w+(e.deltaY>0?1:WP.length-1))%WP.length);},{passive:true});
+window.addEventListener('wheel',e=>{if(G.state==='play'){const L=G.load;switchW(L[(L.indexOf(P.w)+(e.deltaY>0?1:L.length-1))%L.length]);}},{passive:true});
 // settings UI
 function syncSet(){
   document.querySelectorAll('[data-k]').forEach(el=>{el.value=SET[el.dataset.k];});
